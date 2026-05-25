@@ -161,7 +161,11 @@ async def send_text(client: BleakClient, text: str) -> None:
 
     while sent < total:
         chunk = payload[sent : sent + BLE_CHUNK_SIZE]
-        await client.write_gatt_char(NUS_RX_CHAR_UUID, chunk, response=False)
+        # Écriture AVEC réponse : la caractéristique RX du Flipper est protégée
+        # par authentification. Sans réponse, un rejet de la couche sécurité passe
+        # inaperçu (write command = fire-and-forget). Avec réponse, bleak lève une
+        # exception si l'écriture échoue — l'erreur devient visible.
+        await client.write_gatt_char(NUS_RX_CHAR_UUID, chunk, response=True)
         sent += len(chunk)
         if sent < total:
             await asyncio.sleep(0.05)  # Petit délai entre chunks
@@ -236,6 +240,23 @@ async def main() -> None:
 
             mtu = getattr(client, "mtu_size", BLE_CHUNK_SIZE)
             print(f"✅  Connecté ! MTU={mtu}")
+
+            # --- Appairage (bonding) obligatoire ---
+            # Les caractéristiques RX/TX du service serial du Flipper ont la
+            # permission ATTR_PERMISSION_AUTHEN : elles exigent une liaison
+            # authentifiée et chiffrée. Sans bonding, toute écriture sur RX est
+            # rejetée par la couche sécurité — et comme on écrivait sans réponse,
+            # l'échec était silencieux (rien n'arrivait au Flipper, RX:N restait à 0).
+            try:
+                paired = await client.pair()
+                if paired:
+                    print("🔐  Appairage établi (liaison chiffrée).")
+                else:
+                    print("⚠️   Appairage non confirmé — valide le code affiché sur le Flipper.")
+            except Exception as exc:  # noqa: BLE001 — on veut tout rattraper ici
+                print(f"⚠️   Appairage automatique impossible : {exc}")
+                print("    → Windows : Paramètres > Bluetooth et appareils > Ajouter un appareil,")
+                print("      confirme le code affiché sur l'écran du Flipper, puis relance le client.")
 
             # Vérifier que le service Flipper serial est bien présent
             service_uuids = [s.uuid.lower() for s in client.services]
