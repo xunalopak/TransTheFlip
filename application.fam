@@ -1,0 +1,11 @@
+App(
+    appid="trans_the_flip",
+    name="TransTheFlip",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="trans_the_flip_app",
+    requires=["gui"],
+    fap_libs=["ble_profile"],
+    stack_size=4 * 1024,
+    fap_category="GPIO",
+    fap_description="BLE-controlled Bad USB text sender",
+)
