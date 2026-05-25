@@ -12,10 +12,20 @@ Le Flipper le tape automatiquement via USB HID sur le PC cible.
 
 1. Branche le Flipper en **USB** sur le **PC cible**
 2. Lance l'app TransTheFlip sur le Flipper
-3. Démarre `trans_client.py` sur le **PC maître**
-4. Saisis ton texte dans le client — il arrive sur l'écran du Flipper
-5. Appuie sur **OK** (bouton central) → le Flipper tape le texte sur le PC cible
-6. Appuie sur **Retour** pour annuler
+3. **Appaire** le Flipper avec le **PC maître** (Windows) — voir ci-dessous.
+   Indispensable : les caractéristiques BLE sont protégées par authentification.
+4. Démarre `trans_client.py` sur le **PC maître**
+5. Saisis ton texte dans le client — il arrive sur l'écran du Flipper
+6. Appuie sur **OK** (bouton central) → le Flipper tape le texte sur le PC cible
+7. Appuie sur **Retour** pour annuler
+
+> ⚠️ **Appairage obligatoire.** Le service serial du Flipper exige une liaison
+> chiffrée et bondée. Le client tente l'appairage automatiquement
+> (`client.pair()`), mais si ça échoue : **Paramètres Windows > Bluetooth et
+> appareils > Ajouter un appareil**, sélectionne le Flipper, puis **confirme le
+> code à 6 chiffres affiché sur l'écran du Flipper**. Une fois bondé, relance le
+> client. Sans appairage, la connexion réussit mais **aucune donnée n'est
+> transmise** (le compteur `RX:N` du Flipper reste à 0).
 
 ## Syntaxe des touches spéciales
 
@@ -65,10 +75,11 @@ Si le PC cible est configuré en **AZERTY**, les caractères spéciaux
 - Firmware : **Unleashed** ou **Momentum** (testé)
 - **ufbt** installé : `pip install ufbt`
 
-### PC Maître (client Python)
+### PC Maître (client Python — Windows)
+- Windows 10/11 avec **Bluetooth LE** activé
 - Python ≥ 3.9
 - `pip install -r pc_client/requirements.txt`
-- Bluetooth BLE activé
+- Flipper **appairé** au préalable (Paramètres > Bluetooth et appareils)
 
 ## Build & Installation (Flipper)
 
@@ -102,6 +113,7 @@ python trans_client.py
 ✅  Trouvé : Flipper Zero  (AA:BB:CC:DD:EE:FF)
 🔗  Connexion à Flipper Zero...
 ✅  Connecté ! MTU=247
+🔐  Appairage établi (liaison chiffrée).
 
 =======================================================
   TransTheFlip Client — Flipper Zero BLE Remote HID
@@ -133,12 +145,19 @@ TransTheFlip/
 
 ## Architecture technique
 
-### BLE : Nordic UART Service (NUS)
-- **Service UUID** : `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`
-- **RX** (PC→Flipper, Write) : `6E400002-B5A3-F393-E0A9-E50E24DCCA9E`
-- **TX** (Flipper→PC, Notify) : `6E400003-B5A3-F393-E0A9-E50E24DCCA9E`
+### BLE : service serial propriétaire Flipper Zero
+Le Flipper n'expose **pas** le NUS standard mais son propre service serial :
+- **Service UUID** : `8fe5b3d5-2e7f-4a98-2a48-7acc60fe0000`
+- **RX** (PC→Flipper, Write) : `19ed82ae-ed21-4c9d-4145-228e62fe0000`
+- **TX** (Flipper→PC, Notify) : `19ed82ae-ed21-4c9d-4145-228e63fe0000`
 - Terminateur de message : `\n` (newline)
 - Messages de statut Flipper→PC : `RECV`, `OK`, `ERR`, `CANCEL`
+
+> 🔐 **Authentification requise.** Les caractéristiques RX/TX sont déclarées
+> `ATTR_PERMISSION_AUTHEN` côté firmware : la liaison doit être **appairée et
+> chiffrée**. Le client appelle `client.pair()` puis écrit en mode *avec réponse*
+> (`response=True`) pour qu'un éventuel rejet de sécurité remonte une erreur au
+> lieu d'échouer silencieusement.
 
 ### USB HID
 - Le Flipper bascule en mode **clavier USB HID** au démarrage de l'app
@@ -156,6 +175,7 @@ WaitingBT → Connected → TextReceived → Sending → Done → Connected
 
 | Problème | Solution |
 |----------|----------|
+| **Connecté mais `RX:N` reste à 0 / pas de bouton OK** | **Flipper non appairé.** Appaire-le dans Paramètres Windows > Bluetooth et confirme le code sur l'écran du Flipper, puis relance le client. |
 | Flipper non trouvé | Vérifie BLE activé + app lancée |
 | Caractères incorrects | PC cible en QWERTY (voir section layout) |
 | USB non reconnu | Relance l'app (restaure config USB) |
