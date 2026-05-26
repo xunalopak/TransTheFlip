@@ -1,0 +1,63 @@
+name: Build & Release FAP
+
+# Déclenché sur tout push d'un tag vX.Y.Z
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Droits nécessaires pour créer la release et uploader les assets
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build TransTheFlip.fap
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Récupérer le code ──────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. Python pour ufbt ──────────────────────────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # ── 3. Cache du SDK Unleashed (évite de le re-télécharger à chaque run) ─
+      - name: Cache ufbt SDK
+        uses: actions/cache@v4
+        with:
+          path: ~/.ufbt
+          key: ufbt-sdk-unleashed-release-${{ runner.os }}
+          restore-keys: |
+            ufbt-sdk-unleashed-release-
+
+      # ── 4. Installer ufbt ────────────────────────────────────────────────
+      - name: Install ufbt
+        run: pip install ufbt
+
+      # ── 5. Télécharger / mettre à jour le SDK Unleashed ──────────────────
+      - name: Update Unleashed SDK
+        run: ufbt update --channel=release
+
+      # ── 6. Compiler le FAP ───────────────────────────────────────────────
+      - name: Build FAP
+        run: ufbt build
+
+      # ── 7. Copier avec le nom incluant la version du tag ─────────────────
+      - name: Rename FAP with version
+        run: |
+          FAP=$(find ~/.ufbt/build -name "trans_the_flip.fap" | head -1)
+          echo "FAP source: $FAP"
+          cp "$FAP" "TransTheFlip-${{ github.ref_name }}.fap"
+
+      # ── 8. Créer la release GitHub et attacher le .fap ───────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: TransTheFlip-${{ github.ref_name }}.fap
+          generate_release_notes: true
+          fail_on_unmatched_files: true
