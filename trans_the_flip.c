@@ -23,8 +23,17 @@
 #include <furi.h>
 #include <furi_hal.h>
 #include <gui/gui.h>
+#include <dialogs/dialogs.h>
+#include <storage/storage.h>
 #include <string.h>
 #include <stdlib.h>
+
+// ============================================================
+// Chemins pour le layout clavier
+// ============================================================
+#define TTF_LAYOUT_FOLDER  "/ext/badusb/assets/layouts"
+#define TTF_SETTINGS_DIR   "/ext/apps_data/trans_the_flip"
+#define TTF_SETTINGS_PATH  TTF_SETTINGS_DIR "/layout.conf"
 
 // ============================================================
 // Thread d'envoi HID (séparé pour ne pas bloquer l'UI)
@@ -125,6 +134,98 @@ static void start_send(TransTheFlipApp* app) {
 }
 
 // ============================================================
+// Gestion du layout clavier
+// ============================================================
+
+/** Extrait le nom de fichier sans extension depuis un chemin complet. */
+static void layout_name_from_path(const char* path, char* out, size_t out_size) {
+    if(!path || !path[0]) {
+        strncpy(out, "QWERTY US", out_size - 1);
+        out[out_size - 1] = '\0';
+        return;
+    }
+    // Trouver le dernier '/'
+    const char* slash = strrchr(path, '/');
+    const char* base = slash ? slash + 1 : path;
+    // Copier sans l'extension .kl
+    strncpy(out, base, out_size - 1);
+    out[out_size - 1] = '\0';
+    char* dot = strrchr(out, '.');
+    if(dot) *dot = '\0';
+}
+
+/** Sauvegarde le chemin du layout dans le fichier de config. */
+static void save_layout_setting(const char* path) {
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    // Créer le répertoire si nécessaire
+    storage_simply_mkdir(storage, TTF_SETTINGS_DIR);
+    File* file = storage_file_alloc(storage);
+    if(storage_file_open(file, TTF_SETTINGS_PATH, FSAM_WRITE, FSOM_CREATE_ALWAYS)) {
+        storage_file_write(file, path, strlen(path));
+        storage_file_close(file);
+    }
+    storage_file_free(file);
+    furi_record_close(RECORD_STORAGE);
+}
+
+/** Charge le layout sauvegardé au démarrage. Fallback : QWERTY US intégré. */
+static void load_layout_setting(TransTheFlipApp* app) {
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    File* file = storage_file_alloc(storage);
+    bool loaded = false;
+
+    if(storage_file_open(file, TTF_SETTINGS_PATH, FSAM_READ, FSOM_OPEN_EXISTING)) {
+        char path_buf[TTF_LAYOUT_PATH_SIZE];
+        memset(path_buf, 0, sizeof(path_buf));
+        uint16_t r = storage_file_read(file, path_buf, sizeof(path_buf) - 1);
+        storage_file_close(file);
+        if(r > 0 && path_buf[0] != '\0') {
+            if(ttf_hid_load_layout(path_buf)) {
+                strncpy(app->layout_path, path_buf, TTF_LAYOUT_PATH_SIZE - 1);
+                layout_name_from_path(path_buf, app->layout_name, TTF_LAYOUT_NAME_SIZE);
+                loaded = true;
+            }
+        }
+    }
+
+    storage_file_free(file);
+    furi_record_close(RECORD_STORAGE);
+
+    if(!loaded) {
+        ttf_hid_reset_layout();
+        strncpy(app->layout_name, "QWERTY US", TTF_LAYOUT_NAME_SIZE - 1);
+        app->layout_path[0] = '\0';
+    }
+}
+
+/** Ouvre le sélecteur de layout et applique le choix. Appelé hors mutex. */
+static void open_layout_picker(TransTheFlipApp* app) {
+    DialogsApp* dialogs = furi_record_open(RECORD_DIALOGS);
+
+    DialogsFileBrowserOptions opts;
+    dialog_file_browser_set_basic_options(&opts, ".kl", NULL);
+
+    FuriString* path = furi_string_alloc_set(TTF_LAYOUT_FOLDER);
+    bool selected = dialog_file_browser_show(dialogs, path, path, &opts);
+
+    furi_record_close(RECORD_DIALOGS);
+
+    if(selected && furi_string_size(path) > 0) {
+        const char* path_cstr = furi_string_get_cstr(path);
+        if(ttf_hid_load_layout(path_cstr)) {
+            furi_mutex_acquire(app->mutex, FuriWaitForever);
+            strncpy(app->layout_path, path_cstr, TTF_LAYOUT_PATH_SIZE - 1);
+            layout_name_from_path(path_cstr, app->layout_name, TTF_LAYOUT_NAME_SIZE);
+            furi_mutex_release(app->mutex);
+            save_layout_setting(path_cstr);
+        }
+    }
+
+    furi_string_free(path);
+    view_port_update(app->view_port);
+}
+
+// ============================================================
 // Réinitialise le buffer de texte (après envoi ou annulation)
 // Appel sous mutex.
 // ============================================================
@@ -151,6 +252,9 @@ int32_t trans_the_flip_app(void* p) {
         furi_mutex_release(app->mutex);
         view_port_update(app->view_port);
     }
+
+    // --- Chargement du layout (après HID init) ---
+    load_layout_setting(app);
 
     // --- Init BLE serial ---
     ttf_bt_init(app);
@@ -252,6 +356,15 @@ int32_t trans_the_flip_app(void* p) {
                             // OK depuis l'écran d'erreur → retour
                             app->state = AppStateWaitingBT;
                             strncpy(app->error_msg, "", 1);
+                        }
+                        break;
+
+                    case InputKeyLeft:
+                        // Ouvre le sélecteur de layout depuis WaitingBT ou Connected
+                        if(app->state == AppStateWaitingBT || app->state == AppStateConnected) {
+                            furi_mutex_release(app->mutex);
+                            open_layout_picker(app);
+                            furi_mutex_acquire(app->mutex, FuriWaitForever);
                         }
                         break;
 

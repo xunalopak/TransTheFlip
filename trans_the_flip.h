@@ -29,6 +29,8 @@
 #define TTF_ERROR_MSG_SIZE    64
 #define TTF_EVENT_QUEUE_DEPTH 16
 #define TTF_DONE_AUTO_MS      2000   // ms avant retour automatique à Connected
+#define TTF_LAYOUT_NAME_SIZE  24     // longueur max du nom de layout affiché
+#define TTF_LAYOUT_PATH_SIZE  128    // longueur max du chemin vers le fichier .kl
 
 // ============================================================
 // Machine d'états
@@ -88,4 +90,8 @@ typedef struct {
 
     // Timestamp (tick) pour le retour auto depuis AppStateDone
     uint32_t done_tick;
+
+    // Layout clavier actif
+    char layout_name[TTF_LAYOUT_NAME_SIZE]; // ex. "fr-FR" (affiché à l'écran)
+    char layout_path[TTF_LAYOUT_PATH_SIZE]; // chemin complet vers le .kl
 } TransTheFlipApp;

@@ -21,6 +21,7 @@
 #include <furi_hal.h>
 #include <furi_hal_usb.h>
 #include <furi_hal_usb_hid.h>
+#include <storage/storage.h>
 
 #include <string.h>
 #include <stdlib.h>
@@ -36,6 +37,13 @@
 // Config USB sauvegardée pour restauration
 // ============================================================
 static FuriHalUsbInterface* s_prev_usb_config = NULL;
+
+// ============================================================
+// Layout dynamique (chargé depuis fichier .kl ou QWERTY US par défaut)
+// Format : s_layout[ascii_code] = (modifier << 8) | hid_keycode
+// ============================================================
+#define TTF_LAYOUT_SIZE 128
+static uint16_t s_layout[TTF_LAYOUT_SIZE];
 
 // ============================================================
 // Table ASCII → HID (layout QWERTY US)
@@ -263,13 +271,13 @@ static void press_and_release(uint16_t hid_key) {
     furi_delay_ms(TTF_KEY_RELEASE_MS);
 }
 
-/** Envoie un seul caractère ASCII imprimable. */
+/** Envoie un seul caractère ASCII imprimable via le layout actif. */
 static void send_ascii_char(char c) {
     uint8_t idx = (uint8_t)c;
     if(idx < 32 || idx > 126) return; // non imprimable
-    const AsciiHidEntry* e = &ascii_hid_table[idx - 32];
-    if(e->key == 0x00) return;
-    press_and_release(make_hid(e->mod, e->key));
+    uint16_t entry = s_layout[idx];
+    if(entry == 0x0000) return;
+    press_and_release(entry);
 }
 
 /** Cherche une touche spéciale par nom (insensible à la casse). */
@@ -336,17 +344,13 @@ static void handle_combo_tag(const char* tag) {
     // Sinon, si c'est un seul caractère lettre/chiffre
     if(key_str[1] == '\0') {
         char c = key_str[0];
-        // Lettre : hid = 0x04 + (lower - 'a')
-        char cl = (char)tolower((unsigned char)c);
-        if(cl >= 'a' && cl <= 'z') {
-            press_and_release(make_hid(total_mod, 0x04 + (uint8_t)(cl - 'a')));
-            return;
-        }
-        // Chiffre ou ponctuation depuis table ASCII
+        // Utiliser le layout actif pour trouver le HID correct
         if((uint8_t)c >= 32 && (uint8_t)c <= 126) {
-            const AsciiHidEntry* e = &ascii_hid_table[(uint8_t)c - 32];
-            if(e->key != 0) {
-                press_and_release(make_hid(total_mod | e->mod, e->key));
+            uint16_t entry = s_layout[(uint8_t)c];
+            if(entry != 0) {
+                uint8_t base_mod = (uint8_t)(entry >> 8);
+                uint8_t base_key = (uint8_t)(entry & 0xFF);
+                press_and_release(make_hid(total_mod | base_mod, base_key));
                 return;
             }
         }
@@ -390,10 +394,50 @@ static void handle_tag(const char* tag) {
 }
 
 // ============================================================
-// API publique
+// API publique — gestion du layout
+// ============================================================
+
+void ttf_hid_reset_layout(void) {
+    // Remplir s_layout depuis la table QWERTY US intégrée
+    memset(s_layout, 0, sizeof(s_layout));
+    for(uint8_t i = 0; i < 95; i++) {
+        uint8_t ascii = 32 + i;
+        if(ascii < TTF_LAYOUT_SIZE) {
+            s_layout[ascii] = make_hid(ascii_hid_table[i].mod, ascii_hid_table[i].key);
+        }
+    }
+}
+
+bool ttf_hid_load_layout(const char* path) {
+    if(!path || !path[0]) return false;
+
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    File* file = storage_file_alloc(storage);
+    bool ok = false;
+
+    if(storage_file_open(file, path, FSAM_READ, FSOM_OPEN_EXISTING)) {
+        uint16_t buf[TTF_LAYOUT_SIZE];
+        uint16_t bytes_read = storage_file_read(file, buf, sizeof(buf));
+        if(bytes_read == sizeof(buf)) {
+            memcpy(s_layout, buf, sizeof(s_layout));
+            ok = true;
+        }
+        storage_file_close(file);
+    }
+
+    storage_file_free(file);
+    furi_record_close(RECORD_STORAGE);
+    return ok;
+}
+
+// ============================================================
+// API publique — USB HID
 // ============================================================
 
 bool ttf_hid_init(void) {
+    // Charger le layout QWERTY US par défaut
+    ttf_hid_reset_layout();
+
     // Sauvegarder la config USB courante
     s_prev_usb_config = furi_hal_usb_get_config();
 
