@@ -71,7 +71,4 @@ typedef struct {
 
     // Timestamp (tick) pour le retour auto depuis AppStateDone
     uint32_t done_tick;
-
-    // Debug : compteur d'événements BLE reçus (affiché sur l'écran)
-    uint32_t rx_debug_count;
 } TransTheFlipApp;
