@@ -156,16 +156,23 @@ static void draw_text_received(Canvas* canvas, const char* text, size_t text_len
     draw_footer(canvas, "Back:Skip", "OK:Send");
 }
 
-static void draw_waiting_usb(Canvas* canvas) {
+static void draw_waiting_usb(Canvas* canvas, bool usb_detected) {
     draw_header(canvas);
 
     canvas_set_font(canvas, FontSecondary);
-    canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y - 10,
-                            AlignCenter, AlignCenter, "Plug Flipper into");
-    canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y + 2,
-                            AlignCenter, AlignCenter, "the target PC via USB");
-    canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y + 14,
-                            AlignCenter, AlignCenter, "Will send automatically");
+    if(!usb_detected) {
+        canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y - 10,
+                                AlignCenter, AlignCenter, "Plug Flipper into");
+        canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y + 2,
+                                AlignCenter, AlignCenter, "the target PC via USB");
+        canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y + 14,
+                                AlignCenter, AlignCenter, "Will send automatically");
+    } else {
+        canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y - 6,
+                                AlignCenter, AlignCenter, "USB connected!");
+        canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y + 8,
+                                AlignCenter, AlignCenter, "Sending in a moment...");
+    }
 
     draw_footer(canvas, "Back:Cancel", NULL);
 }
@@ -217,8 +224,9 @@ void ttf_view_draw_callback(Canvas* canvas, void* context) {
 
     // Snapshot de l'état sous mutex pour éviter les races avec le main thread
     furi_mutex_acquire(app->mutex, FuriWaitForever);
-    AppState state    = app->state;
-    size_t   text_len = app->text_len;
+    AppState state        = app->state;
+    size_t   text_len     = app->text_len;
+    bool     usb_detected = (app->usb_detect_tick != 0);
     char text_copy[TTF_TEXT_BUFFER_SIZE];
     char err_copy[TTF_ERROR_MSG_SIZE];
     char layout_copy[TTF_LAYOUT_NAME_SIZE];
@@ -243,7 +251,7 @@ void ttf_view_draw_callback(Canvas* canvas, void* context) {
         draw_text_received(canvas, text_copy, text_len);
         break;
     case AppStateWaitingUSB:
-        draw_waiting_usb(canvas);
+        draw_waiting_usb(canvas, usb_detected);
         break;
     case AppStateSending:
         draw_sending(canvas);

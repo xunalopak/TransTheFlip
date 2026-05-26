@@ -354,7 +354,8 @@ int32_t trans_the_flip_app(void* p) {
                                 furi_mutex_acquire(app->mutex, FuriWaitForever);
                             } else {
                                 // USB non connecté : attendre le branchement
-                                app->state = AppStateWaitingUSB;
+                                app->state           = AppStateWaitingUSB;
+                                app->usb_detect_tick = 0;
                             }
                         } else if(app->state == AppStateError) {
                             // OK depuis l'écran d'erreur → retour
@@ -382,7 +383,8 @@ int32_t trans_the_flip_app(void* p) {
                             break;
                         case AppStateWaitingUSB:
                             // Annuler l'attente USB → retour à Connected
-                            app->state = AppStateConnected;
+                            app->state           = AppStateConnected;
+                            app->usb_detect_tick = 0;
                             reset_text_buffer(app);
                             ttf_bt_send_status("CANCEL\n");
                             break;
@@ -463,13 +465,28 @@ int32_t trans_the_flip_app(void* p) {
                 }
             }
 
-            // Dès que l'USB HID est détecté en attente de branchement → lancer l'envoi
-            if(app->state == AppStateWaitingUSB && furi_hal_hid_is_connected()) {
-                app->state = AppStateSending;
-                furi_mutex_release(app->mutex);
-                start_send(app);
-                furi_mutex_acquire(app->mutex, FuriWaitForever);
-                need_update = true;
+            // Gestion du délai post-connexion USB avant envoi
+            if(app->state == AppStateWaitingUSB) {
+                if(furi_hal_hid_is_connected()) {
+                    if(app->usb_detect_tick == 0) {
+                        // Première détection : démarrer le compte-à-rebours
+                        app->usb_detect_tick = furi_get_tick();
+                        need_update = true; // rafraîchir l'écran (USB detected)
+                    } else if(furi_get_tick() - app->usb_detect_tick >= TTF_USB_CONNECT_DELAY_MS) {
+                        // Délai écoulé → lancer l'envoi
+                        app->state = AppStateSending;
+                        furi_mutex_release(app->mutex);
+                        start_send(app);
+                        furi_mutex_acquire(app->mutex, FuriWaitForever);
+                        need_update = true;
+                    }
+                } else {
+                    // USB débranché pendant l'attente → remettre le tick à zéro
+                    if(app->usb_detect_tick != 0) {
+                        app->usb_detect_tick = 0;
+                        need_update = true;
+                    }
+                }
             }
 
             furi_mutex_release(app->mutex);
