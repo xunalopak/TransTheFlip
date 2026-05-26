@@ -183,5 +183,11 @@ WaitingBT → Connected → TextReceived → Sending → Done → Connected
 
 ## Licence
 
-MIT — usage éducatif et tests de sécurité autorisés uniquement.  
-N'utilise pas cet outil sur des systèmes sans autorisation explicite.
+**GNU GPLv3** — Copyright © 2026 Romain Champliau — voir le fichier [LICENSE](LICENSE).
+
+Tu peux utiliser, étudier, modifier et redistribuer ce projet, mais **toute
+version dérivée doit rester open source sous GPLv3** et conserver l'attribution
+à Romain Champliau. Personne ne peut en faire un produit propriétaire fermé.
+
+> ⚠️ Usage éducatif et tests de sécurité autorisés uniquement.
+> N'utilise pas cet outil sur des systèmes sans autorisation explicite.
