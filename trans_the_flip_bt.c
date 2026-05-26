@@ -11,6 +11,7 @@
 // ============================================================
 static Bt*                   s_bt      = NULL;
 static FuriHalBleProfileBase* s_profile = NULL;
+static TransTheFlipApp*      s_app     = NULL;
 
 // ============================================================
 // Callback : changement de statut BLE (connect / disconnect)
@@ -47,9 +48,6 @@ static void bt_status_callback(BtStatus status, void* context) {
 static uint16_t serial_data_callback(SerialServiceEvent event, void* context) {
     TransTheFlipApp* app = (TransTheFlipApp*)context;
 
-    // Incrémenter le compteur debug pour tout événement reçu
-    app->rx_debug_count++;
-
     if(event.event == SerialServiceEventTypeDataReceived && event.data.size > 0) {
         AppEvent ev;
         memset(&ev, 0, sizeof(ev));
@@ -80,6 +78,7 @@ static uint16_t serial_data_callback(SerialServiceEvent event, void* context) {
 // ============================================================
 
 bool ttf_bt_init(TransTheFlipApp* app) {
+    s_app = app;
     s_bt = furi_record_open(RECORD_BT);
     if(!s_bt) return false;
 
@@ -142,9 +141,28 @@ void ttf_bt_notify_ready(void) {
 
 void ttf_bt_on_connect(void) {
     if(!s_profile) return;
-    // Désactiver le mode RPC au cas où le firmware l'aurait réactivé
+
+    // CRUCIAL : à chaque connexion, le service `bt` du firmware ré-écrase NOTRE
+    // callback de données par le sien (bt_serial_event_callback, qui route vers
+    // RPC) et réactive le mode RPC — cf. bt.c, handler GapEventTypeConnected.
+    // Conséquence : après connexion, toutes les données RX partent vers RPC et
+    // n'atteignent jamais serial_data_callback (compteur RX reste à 0).
+    //
+    // On reprend la main en ré-enregistrant notre propre callback ICI, une fois
+    // la connexion établie. L'ordre est garanti : le service bt pose son callback
+    // dans le handler GAP *avant* d'émettre le statut "Connected" qui déclenche
+    // cet appel. Ce ré-enregistrement repositionne aussi bytes_ready_to_receive
+    // = buff_size (cf. ble_svc_serial_set_callbacks) → réarme le flow control.
+    ble_profile_serial_set_event_callback(
+        s_profile,
+        BLE_PROFILE_SERIAL_PACKET_SIZE_MAX,
+        serial_data_callback,
+        s_app);
+
+    // Désactiver le mode RPC (met à jour la caractéristique de statut côté PC).
     ble_profile_serial_set_rpc_active(s_profile, false);
-    // Réamorcer le flow control : signaler que notre buffer est prêt
+
+    // Réamorcer le flow control : signaler que notre buffer est prêt.
     ble_profile_serial_notify_buffer_is_empty(s_profile);
 }
 

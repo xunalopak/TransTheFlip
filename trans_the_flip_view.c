@@ -177,7 +177,6 @@ void ttf_view_draw_callback(Canvas* canvas, void* context) {
     furi_mutex_acquire(app->mutex, FuriWaitForever);
     AppState    state          = app->state;
     size_t      text_len       = app->text_len;
-    uint32_t    rx_debug_count = app->rx_debug_count;
     char text_copy[TTF_TEXT_BUFFER_SIZE];
     char err_copy[TTF_ERROR_MSG_SIZE];
     strncpy(text_copy, app->received_text, sizeof(text_copy) - 1);
@@ -209,30 +208,6 @@ void ttf_view_draw_callback(Canvas* canvas, void* context) {
         break;
     default:
         break;
-    }
-
-    // Compteur debug BLE (coin bas-droite) — visible sur tous les écrans
-    // Permet de vérifier si le callback serial_data_callback est bien appelé
-    if(rx_debug_count > 0 || state == AppStateWaitingBT || state == AppStateConnected) {
-        char dbg[16];
-        // Construction manuelle : "RX:" + nombre (évite snprintf si non dispo)
-        uint32_t n    = rx_debug_count;
-        int      pos  = 15;
-        dbg[pos--]    = '\0';
-        if(n == 0) {
-            dbg[pos--] = '0';
-        } else {
-            while(n > 0 && pos >= 0) {
-                dbg[pos--] = (char)('0' + (n % 10));
-                n /= 10;
-            }
-        }
-        // Copier "RX:" devant
-        dbg[pos--] = ':';
-        dbg[pos--] = 'X';
-        dbg[pos]   = 'R';
-        canvas_set_font(canvas, FontSecondary);
-        canvas_draw_str(canvas, 90, 63, &dbg[pos]);
     }
 }
 
