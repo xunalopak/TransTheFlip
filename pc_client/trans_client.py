@@ -1,31 +1,31 @@
 #!/usr/bin/env python3
 """
 TransTheFlip — PC Client
-Envoie du texte au Flipper Zero via BLE (Nordic UART Service).
-Le Flipper reçoit le texte, demande une confirmation, puis le tape
-via USB HID sur le PC cible.
+Sends text to the Flipper Zero over BLE (Flipper serial service).
+The Flipper receives the text, waits for confirmation, then types it
+as USB HID keystrokes on the target PC.
 
-Syntaxe des touches spéciales dans le texte :
-  [ENTER]           Touche Entrée
-  [TAB]             Tabulation
-  [ESC]             Échap
-  [BACKSPACE]       Retour arrière
-  [DEL]             Supprimer
-  [UP/DOWN/LEFT/RIGHT]  Flèches directionnelles
-  [F1]..[F12]       Touches de fonction
-  [CTRL+c]          Combinaisons (modificateurs + touche)
+Special key syntax (inline in the text):
+  [ENTER]             Enter key
+  [TAB]               Tab
+  [ESC]               Escape
+  [BACKSPACE]         Backspace
+  [DEL]               Delete
+  [UP/DOWN/LEFT/RIGHT]  Arrow keys
+  [F1]..[F12]         Function keys
+  [CTRL+c]            Key combos (modifier + key)
   [ALT+F4]
   [WIN+r]
   [CTRL+SHIFT+ESC]
-  [DELAY:500]       Pause 500 ms sur le Flipper
+  [DELAY:500]         Pause 500 ms on the Flipper
 
-Exemples :
+Examples:
   Hello World[ENTER]
   [WIN+r]notepad[ENTER]
   [CTRL+a][DEL]
   ipconfig /all[ENTER]
 
-Utilisation :
+Usage:
   pip install -r requirements.txt
   python trans_client.py
 """
@@ -39,31 +39,31 @@ try:
     from bleak.backends.device import BLEDevice
     from bleak.backends.characteristic import BleakGATTCharacteristic
 except ImportError:
-    print("❌  bleak n'est pas installé. Exécutez :")
+    print("❌  bleak is not installed. Run:")
     print("    pip install bleak")
     sys.exit(1)
 
 # ============================================================
-# UUIDs du service BLE serial propriétaire Flipper Zero
-# (découverts par introspection GATT — pas NUS standard)
+# Flipper Zero proprietary BLE serial service UUIDs
+# (discovered by GATT introspection — not standard NUS)
 # ============================================================
 FLIPPER_SERVICE_UUID = "8fe5b3d5-2e7f-4a98-2a48-7acc60fe0000"
 FLIPPER_RX_CHAR_UUID = "19ed82ae-ed21-4c9d-4145-228e62fe0000"  # PC → Flipper (Write)
 FLIPPER_TX_CHAR_UUID = "19ed82ae-ed21-4c9d-4145-228e63fe0000"  # Flipper → PC (Notify)
 
-# Alias pour compatibilité avec le reste du code
+# Aliases for compatibility
 NUS_SERVICE_UUID = FLIPPER_SERVICE_UUID
 NUS_RX_CHAR_UUID = FLIPPER_RX_CHAR_UUID
 NUS_TX_CHAR_UUID = FLIPPER_TX_CHAR_UUID
 
-# Taille max d'un chunk BLE (sécuritaire pour BLE 4.x sans DLE)
+# Max BLE chunk size (safe for BLE 4.x without DLE)
 BLE_CHUNK_SIZE = 20
 
-# Timeout de scan BLE (secondes)
+# BLE scan timeout (seconds)
 SCAN_TIMEOUT = 12.0
 
 # ============================================================
-# Gestion des notifications depuis le Flipper
+# Notification handler (Flipper → PC status messages)
 # ============================================================
 _last_status: str = ""
 
@@ -72,56 +72,52 @@ def _notification_handler(characteristic: BleakGATTCharacteristic, data: bytearr
     msg = data.decode("utf-8", errors="replace").strip()
     _last_status = msg
     status_map = {
-        "OK":     "✅  Flipper : texte envoyé avec succès",
-        "ERR":    "❌  Flipper : erreur lors de l'envoi HID",
-        "CANCEL": "🚫  Flipper : envoi annulé par l'utilisateur",
-        "RECV":   "📥  Flipper : texte reçu, en attente de confirmation...",
+        "OK":     "✅  Flipper: text sent successfully",
+        "ERR":    "❌  Flipper: HID send error",
+        "CANCEL": "🚫  Flipper: send cancelled by user",
+        "RECV":   "📥  Flipper: text received, waiting for confirmation...",
     }
-    display = status_map.get(msg, f"📡  Flipper : {msg}")
+    display = status_map.get(msg, f"📡  Flipper: {msg}")
     print(f"\r{display}")
     print("> ", end="", flush=True)
 
 
 # ============================================================
-# Scan et sélection du Flipper
+# BLE scan and Flipper selection
 # ============================================================
 async def scan_for_flipper() -> Optional[BLEDevice]:
-    print(f"🔍  Scan BLE en cours ({SCAN_TIMEOUT:.0f}s)...")
+    print(f"🔍  Scanning BLE ({SCAN_TIMEOUT:.0f}s)...")
 
-    # BleakScanner.discover() renvoie des tuples (BLEDevice, AdvertisementData)
-    # depuis bleak 0.20+. On utilise return_adv=True pour obtenir les deux.
     results = await BleakScanner.discover(timeout=SCAN_TIMEOUT, return_adv=True)
-    # results : dict { address: (BLEDevice, AdvertisementData) }
 
-    # --- Debug : afficher tous les appareils détectés ---
     if results:
-        print(f"📡  {len(results)} appareil(s) BLE détecté(s) :")
+        print(f"📡  {len(results)} BLE device(s) found:")
         for dev, adv in sorted(results.values(), key=lambda x: x[0].name or ""):
             uuids = ", ".join(adv.service_uuids[:2]) if adv.service_uuids else "—"
-            print(f"     • {dev.name or '(sans nom)':<30} {dev.address}  [{uuids}]")
+            print(f"     • {dev.name or '(no name)':<30} {dev.address}  [{uuids}]")
     else:
-        print("⚠️   Aucun appareil BLE détecté du tout (BLE désactivé sur ce PC ?)")
+        print("⚠️   No BLE devices found at all (is Bluetooth enabled on this PC?)")
 
     flippers: list[BLEDevice] = []
     for dev, adv in results.values():
         uuids_lower = [u.lower() for u in (adv.service_uuids or [])]
-        # Critère 1 : service Flipper serial propriétaire annoncé
+        # Criterion 1: Flipper serial service advertised
         if FLIPPER_SERVICE_UUID in uuids_lower:
             flippers.append(dev)
             continue
-        # Critère 2 : nom contient "flipper" (nom par défaut)
+        # Criterion 2: device name contains "flipper"
         if dev.name and "flipper" in dev.name.lower():
             flippers.append(dev)
 
     if not flippers:
-        print("\n❌  Aucun Flipper Zero reconnu automatiquement.")
-        print("    → Si ton Flipper apparaît dans la liste ci-dessus, entre son numéro :")
+        print("\n❌  No Flipper Zero detected automatically.")
+        print("    → If your Flipper appears in the list above, enter its number:")
         numbered = list(results.values())
         for i, (dev, _) in enumerate(numbered, start=1):
-            print(f"       {i}. {dev.name or '(sans nom)'}  ({dev.address})")
-        print(f"       0. Quitter")
+            print(f"       {i}. {dev.name or '(no name)'}  ({dev.address})")
+        print(f"       0. Quit")
         try:
-            raw = await asyncio.to_thread(input, "Choix : ")
+            raw = await asyncio.to_thread(input, "Choice: ")
             idx = int(raw.strip()) - 1
             if 0 <= idx < len(numbered):
                 return numbered[idx][0]
@@ -131,70 +127,68 @@ async def scan_for_flipper() -> Optional[BLEDevice]:
 
     if len(flippers) == 1:
         dev = flippers[0]
-        print(f"✅  Trouvé : {dev.name}  ({dev.address})")
+        print(f"✅  Found: {dev.name}  ({dev.address})")
         return dev
 
-    # Plusieurs Flipper détectés
-    print("\n📋  Plusieurs appareils Flipper détectés :")
+    # Multiple Flippers detected
+    print("\n📋  Multiple Flipper devices found:")
     for i, d in enumerate(flippers, start=1):
         print(f"    {i}. {d.name}  ({d.address})")
 
     while True:
         try:
-            raw = await asyncio.to_thread(input, "Choisissez le numéro : ")
+            raw = await asyncio.to_thread(input, "Select number: ")
             idx = int(raw.strip()) - 1
             if 0 <= idx < len(flippers):
                 return flippers[idx]
         except (ValueError, EOFError):
             pass
-        print("    Saisie invalide, réessayez.")
+        print("    Invalid input, try again.")
 
 
 # ============================================================
-# Envoi du texte (chunked si > BLE_CHUNK_SIZE)
+# Send text (chunked if > BLE_CHUNK_SIZE)
 # ============================================================
 async def send_text(client: BleakClient, text: str) -> None:
-    """Envoie le texte + '\n' au Flipper, découpé en chunks BLE."""
+    """Send text + '\\n' to the Flipper, split into BLE chunks."""
     payload = (text + "\n").encode("utf-8")
     total = len(payload)
     sent = 0
 
     while sent < total:
         chunk = payload[sent : sent + BLE_CHUNK_SIZE]
-        # Écriture AVEC réponse : la caractéristique RX du Flipper est protégée
-        # par authentification. Sans réponse, un rejet de la couche sécurité passe
-        # inaperçu (write command = fire-and-forget). Avec réponse, bleak lève une
-        # exception si l'écriture échoue — l'erreur devient visible.
+        # Write WITH response: the Flipper RX characteristic requires authentication.
+        # Without response, a security rejection is silent (fire-and-forget).
+        # With response, bleak raises an exception if the write fails.
         await client.write_gatt_char(NUS_RX_CHAR_UUID, chunk, response=True)
         sent += len(chunk)
         if sent < total:
-            await asyncio.sleep(0.05)  # Petit délai entre chunks
+            await asyncio.sleep(0.05)  # Small delay between chunks
 
-    print(f"📤  Envoyé ({total} octets). Confirmez sur le Flipper (bouton OK).")
+    print(f"📤  Sent ({total} bytes). Confirm on the Flipper (OK button).")
 
 
 # ============================================================
-# Boucle interactive
+# Interactive loop
 # ============================================================
 async def interactive_loop(client: BleakClient) -> None:
     print("\n" + "="*55)
     print("  TransTheFlip Client — Flipper Zero BLE Remote HID")
     print("="*55)
-    print("  Syntaxe  : texte normal + [TAGS] pour touches spéciales")
-    print("  Exemples : Hello[ENTER]   [WIN+r]notepad[ENTER]")
-    print("             [CTRL+SHIFT+ESC]   [DELAY:1000]")
-    print("  Commandes: quit / exit  → déconnexion")
-    print("             help         → rappel de la syntaxe")
+    print("  Syntax  : plain text + [TAGS] for special keys")
+    print("  Examples: Hello[ENTER]   [WIN+r]notepad[ENTER]")
+    print("            [CTRL+SHIFT+ESC]   [DELAY:1000]")
+    print("  Commands: quit / exit  → disconnect")
+    print("            help         → show key syntax")
     print("="*55 + "\n")
 
-    # S'abonner aux notifications du Flipper (TX)
     await client.start_notify(NUS_TX_CHAR_UUID, _notification_handler)
 
     while True:
         try:
             raw = await asyncio.to_thread(input, "> ")
         except (EOFError, KeyboardInterrupt):
-            print("\n👋  Déconnexion...")
+            print("\n👋  Disconnecting...")
             break
 
         text = raw.strip()
@@ -203,20 +197,20 @@ async def interactive_loop(client: BleakClient) -> None:
             continue
 
         if text.lower() in ("quit", "exit", "q"):
-            print("👋  Déconnexion...")
+            print("👋  Disconnecting...")
             break
 
         if text.lower() == "help":
             print("""
-  Touches spéciales (inline dans le texte) :
+  Special keys (inline in the text):
     [ENTER]  [TAB]  [ESC]  [BACKSPACE]  [DEL]
     [UP]  [DOWN]  [LEFT]  [RIGHT]
     [HOME]  [END]  [PGUP]  [PGDN]
     [F1]..[F12]
-    [CTRL+<touche>]   ex: [CTRL+c]  [CTRL+SHIFT+ESC]
-    [ALT+<touche>]    ex: [ALT+F4]
-    [WIN+<touche>]    ex: [WIN+r]
-    [DELAY:<ms>]      ex: [DELAY:500]
+    [CTRL+<key>]   e.g. [CTRL+c]  [CTRL+SHIFT+ESC]
+    [ALT+<key>]    e.g. [ALT+F4]
+    [WIN+<key>]    e.g. [WIN+r]
+    [DELAY:<ms>]   e.g. [DELAY:500]
 """)
             continue
 
@@ -224,60 +218,55 @@ async def interactive_loop(client: BleakClient) -> None:
 
 
 # ============================================================
-# Point d'entrée
+# Entry point
 # ============================================================
 async def main() -> None:
     device = await scan_for_flipper()
     if device is None:
         return
 
-    print(f"🔗  Connexion à {device.name}...")
+    print(f"🔗  Connecting to {device.name}...")
     try:
         async with BleakClient(device.address, timeout=15.0) as client:
             if not client.is_connected:
-                print("❌  Connexion échouée.")
+                print("❌  Connection failed.")
                 return
 
             mtu = getattr(client, "mtu_size", BLE_CHUNK_SIZE)
-            print(f"✅  Connecté ! MTU={mtu}")
+            print(f"✅  Connected! MTU={mtu}")
 
-            # --- Appairage (bonding) obligatoire ---
-            # Les caractéristiques RX/TX du service serial du Flipper ont la
-            # permission ATTR_PERMISSION_AUTHEN : elles exigent une liaison
-            # authentifiée et chiffrée. Sans bonding, toute écriture sur RX est
-            # rejetée par la couche sécurité — et comme on écrivait sans réponse,
-            # l'échec était silencieux (rien n'arrivait au Flipper, RX:N restait à 0).
+            # --- Pairing (bonding) is mandatory ---
+            # The Flipper serial RX/TX characteristics require ATTR_PERMISSION_AUTHEN:
+            # the link must be authenticated and encrypted. Without bonding, any write
+            # to RX is silently rejected by the security layer.
             try:
                 paired = await client.pair()
                 if paired:
-                    print("🔐  Appairage établi (liaison chiffrée).")
+                    print("🔐  Pairing established (encrypted link).")
                 else:
-                    print("⚠️   Appairage non confirmé — valide le code affiché sur le Flipper.")
-            except Exception as exc:  # noqa: BLE001 — on veut tout rattraper ici
-                print(f"⚠️   Appairage automatique impossible : {exc}")
-                print("    → Windows : Paramètres > Bluetooth et appareils > Ajouter un appareil,")
-                print("      confirme le code affiché sur l'écran du Flipper, puis relance le client.")
+                    print("⚠️   Pairing not confirmed — confirm the code shown on the Flipper screen.")
+            except Exception as exc:  # noqa: BLE001
+                print(f"⚠️   Automatic pairing failed: {exc}")
+                print("    → Windows: Settings > Bluetooth & devices > Add a device,")
+                print("      confirm the code shown on the Flipper screen, then restart the client.")
 
-            # Vérifier que le service Flipper serial est bien présent
+            # Verify that the Flipper serial service is present
             service_uuids = [s.uuid.lower() for s in client.services]
             if FLIPPER_SERVICE_UUID not in service_uuids:
-                print(f"⚠️   Service Flipper serial non trouvé ({FLIPPER_SERVICE_UUID})")
-                print("    L'app TransTheFlip est-elle bien lancée sur le Flipper ?")
+                print(f"⚠️   Flipper serial service not found ({FLIPPER_SERVICE_UUID})")
+                print("    Is the TransTheFlip app running on the Flipper?")
                 return
 
             await interactive_loop(client)
 
     except Exception as exc:
-        print(f"❌  Erreur BLE : {exc}")
+        print(f"❌  BLE error: {exc}")
         if "not found" in str(exc).lower() or "no such device" in str(exc).lower():
-            print("    L'appareil s'est peut-être éteint ou déconnecté.")
+            print("    The device may have turned off or disconnected.")
 
 
 if __name__ == "__main__":
-    # Note : WindowsSelectorEventLoopPolicy est déprécié depuis Python 3.12
-    # et supprimé en 3.16. bleak 0.21+ gère Windows nativement, pas besoin
-    # de le forcer.
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n👋  Interruption clavier.")
+        print("\n👋  Keyboard interrupt.")

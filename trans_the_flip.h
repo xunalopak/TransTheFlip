@@ -31,6 +31,7 @@
 #define TTF_DONE_AUTO_MS      2000   // ms avant retour automatique à Connected
 #define TTF_LAYOUT_NAME_SIZE  24     // longueur max du nom de layout affiché
 #define TTF_LAYOUT_PATH_SIZE  128    // longueur max du chemin vers le fichier .kl
+#define TTF_USB_CONNECT_DELAY_MS 1500 // délai après détection USB avant envoi
 
 // ============================================================
 // Machine d'états
@@ -95,4 +96,7 @@ typedef struct {
     // Layout clavier actif
     char layout_name[TTF_LAYOUT_NAME_SIZE]; // ex. "fr-FR" (affiché à l'écran)
     char layout_path[TTF_LAYOUT_PATH_SIZE]; // chemin complet vers le .kl
+
+    // Tick de détection USB (état WaitingUSB) — 0 = USB pas encore vu
+    uint32_t usb_detect_tick;
 } TransTheFlipApp;
