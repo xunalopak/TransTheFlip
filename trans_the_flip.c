@@ -345,13 +345,17 @@ int32_t trans_the_flip_app(void* p) {
 
                     case InputKeyOk:
                         if(app->state == AppStateTextReceived) {
-                            app->state = AppStateSending;
-                            // Lance le thread d'envoi (sous mutex pour cohérence)
-                            // ATTENTION : on libère le mutex avant de démarrer le thread
-                            // pour éviter un deadlock si le thread tente d'acquérir le mutex.
-                            furi_mutex_release(app->mutex);
-                            start_send(app);
-                            furi_mutex_acquire(app->mutex, FuriWaitForever);
+                            // Vérifier que le Flipper est bien branché en USB HID
+                            // à un PC avant de lancer l'envoi
+                            if(furi_hal_hid_is_connected()) {
+                                app->state = AppStateSending;
+                                furi_mutex_release(app->mutex);
+                                start_send(app);
+                                furi_mutex_acquire(app->mutex, FuriWaitForever);
+                            } else {
+                                // USB non connecté : attendre le branchement
+                                app->state = AppStateWaitingUSB;
+                            }
                         } else if(app->state == AppStateError) {
                             // OK depuis l'écran d'erreur → retour
                             app->state = AppStateWaitingBT;
@@ -372,6 +376,12 @@ int32_t trans_the_flip_app(void* p) {
                         switch(app->state) {
                         case AppStateTextReceived:
                             // Annuler → retour à Connected
+                            app->state = AppStateConnected;
+                            reset_text_buffer(app);
+                            ttf_bt_send_status("CANCEL\n");
+                            break;
+                        case AppStateWaitingUSB:
+                            // Annuler l'attente USB → retour à Connected
                             app->state = AppStateConnected;
                             reset_text_buffer(app);
                             ttf_bt_send_status("CANCEL\n");
@@ -440,16 +450,26 @@ int32_t trans_the_flip_app(void* p) {
             view_port_update(app->view_port);
 
         } else if(status == FuriStatusErrorTimeout) {
-            // Timeout 100 ms : retour automatique depuis AppStateDone
+            // Timeout 100 ms : transitions automatiques
             furi_mutex_acquire(app->mutex, FuriWaitForever);
             bool need_update = false;
 
+            // Retour auto depuis AppStateDone
             if(app->state == AppStateDone && app->done_tick != 0) {
                 if(furi_get_tick() - app->done_tick > TTF_DONE_AUTO_MS) {
                     app->state    = AppStateConnected;
                     app->done_tick = 0;
                     need_update   = true;
                 }
+            }
+
+            // Dès que l'USB HID est détecté en attente de branchement → lancer l'envoi
+            if(app->state == AppStateWaitingUSB && furi_hal_hid_is_connected()) {
+                app->state = AppStateSending;
+                furi_mutex_release(app->mutex);
+                start_send(app);
+                furi_mutex_acquire(app->mutex, FuriWaitForever);
+                need_update = true;
             }
 
             furi_mutex_release(app->mutex);

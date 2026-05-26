@@ -81,28 +81,39 @@ static void draw_footer(Canvas* canvas, const char* left, const char* right) {
 // Rendu par état
 // ============================================================
 
-static void draw_waiting_bt(Canvas* canvas) {
-    draw_header(canvas);
-
+/** Dessine la ligne "Kbd: <layout>" au-dessus du footer. */
+static void draw_layout_line(Canvas* canvas, const char* layout) {
+    char buf[TTF_LAYOUT_NAME_SIZE + 6];
+    snprintf(buf, sizeof(buf), "Kbd: %s", (layout && layout[0]) ? layout : "?");
     canvas_set_font(canvas, FontSecondary);
-    canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y - 6,
-                            AlignCenter, AlignCenter, "Waiting for BLE...");
-    canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y + 6,
-                            AlignCenter, AlignCenter, "Connect from PC");
-
-    draw_footer(canvas, NULL, "Back:Exit");
+    canvas_draw_str_aligned(canvas, SCREEN_W / 2, FOOTER_Y - 4,
+                            AlignCenter, AlignBottom, buf);
 }
 
-static void draw_connected(Canvas* canvas) {
+static void draw_waiting_bt(Canvas* canvas, const char* layout) {
     draw_header(canvas);
 
     canvas_set_font(canvas, FontSecondary);
-    canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y - 6,
+    canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y - 8,
+                            AlignCenter, AlignCenter, "Waiting for BLE...");
+    canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y + 2,
+                            AlignCenter, AlignCenter, "Connect from PC");
+
+    draw_layout_line(canvas, layout);
+    draw_footer(canvas, "Left:Kbd", "Back:Exit");
+}
+
+static void draw_connected(Canvas* canvas, const char* layout) {
+    draw_header(canvas);
+
+    canvas_set_font(canvas, FontSecondary);
+    canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y - 8,
                             AlignCenter, AlignCenter, "BLE Connected!");
-    canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y + 6,
+    canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y + 2,
                             AlignCenter, AlignCenter, "Send text from client");
 
-    draw_footer(canvas, NULL, "Back:Exit");
+    draw_layout_line(canvas, layout);
+    draw_footer(canvas, "Left:Kbd", "Back:Exit");
 }
 
 static void draw_text_received(Canvas* canvas, const char* text, size_t text_len) {
@@ -143,6 +154,20 @@ static void draw_text_received(Canvas* canvas, const char* text, size_t text_len
     }
 
     draw_footer(canvas, "Back:Skip", "OK:Send");
+}
+
+static void draw_waiting_usb(Canvas* canvas) {
+    draw_header(canvas);
+
+    canvas_set_font(canvas, FontSecondary);
+    canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y - 10,
+                            AlignCenter, AlignCenter, "Plug Flipper into");
+    canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y + 2,
+                            AlignCenter, AlignCenter, "the target PC via USB");
+    canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y + 14,
+                            AlignCenter, AlignCenter, "Will send automatically");
+
+    draw_footer(canvas, "Back:Cancel", NULL);
 }
 
 static void draw_sending(Canvas* canvas) {
@@ -192,27 +217,33 @@ void ttf_view_draw_callback(Canvas* canvas, void* context) {
 
     // Snapshot de l'état sous mutex pour éviter les races avec le main thread
     furi_mutex_acquire(app->mutex, FuriWaitForever);
-    AppState    state          = app->state;
-    size_t      text_len       = app->text_len;
+    AppState state    = app->state;
+    size_t   text_len = app->text_len;
     char text_copy[TTF_TEXT_BUFFER_SIZE];
     char err_copy[TTF_ERROR_MSG_SIZE];
+    char layout_copy[TTF_LAYOUT_NAME_SIZE];
     strncpy(text_copy, app->received_text, sizeof(text_copy) - 1);
     text_copy[sizeof(text_copy) - 1] = '\0';
     strncpy(err_copy, app->error_msg, sizeof(err_copy) - 1);
     err_copy[sizeof(err_copy) - 1] = '\0';
+    strncpy(layout_copy, app->layout_name, sizeof(layout_copy) - 1);
+    layout_copy[sizeof(layout_copy) - 1] = '\0';
     furi_mutex_release(app->mutex);
 
     canvas_clear(canvas);
 
     switch(state) {
     case AppStateWaitingBT:
-        draw_waiting_bt(canvas);
+        draw_waiting_bt(canvas, layout_copy);
         break;
     case AppStateConnected:
-        draw_connected(canvas);
+        draw_connected(canvas, layout_copy);
         break;
     case AppStateTextReceived:
         draw_text_received(canvas, text_copy, text_len);
+        break;
+    case AppStateWaitingUSB:
+        draw_waiting_usb(canvas);
         break;
     case AppStateSending:
         draw_sending(canvas);

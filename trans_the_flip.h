@@ -39,6 +39,7 @@ typedef enum {
     AppStateWaitingBT = 0,   // Attente connexion BLE
     AppStateConnected,        // Connecté, attente texte
     AppStateTextReceived,     // Texte reçu, confirmation en attente
+    AppStateWaitingUSB,       // OK pressé mais USB HID non connecté — attente branchement
     AppStateSending,          // Envoi HID en cours
     AppStateDone,             // Terminé (retour auto)
     AppStateError,            // Erreur
