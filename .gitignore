@@ -1,0 +1,13 @@
+# Claude Code workspace
+.claude/
+
+# ufbt build artifacts
+.ufbt/
+dist/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+env/
