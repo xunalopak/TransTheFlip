@@ -51,11 +51,23 @@ void ttf_hid_deinit(void);
  *   [CTRL+SHIFT+ESC]
  *   [DELAY:500]     Pause de 500 ms
  *
- * Note : la table de mapping est QWERTY US. Si le PC cible est
- * configuré en AZERTY, certains caractères seront erronés — voir README.
- *
  * @param text   Chaîne null-terminée à envoyer.
  * @param len    Longueur de la chaîne (sans le '\0').
  * @return true si envoyé sans erreur.
  */
 bool ttf_hid_send_string(const char* text, size_t len);
+
+/**
+ * @brief Charge un fichier de layout BadUSB (.kl) et l'active.
+ *        Format : 256 octets = 128 × uint16_t (modifier<<8 | hid_keycode),
+ *        indexé par code ASCII 0–127. Compatible avec les layouts de
+ *        /ext/badusb/assets/layouts/ (en-US.kl, fr-FR.kl, etc.).
+ * @param path  Chemin absolu vers le fichier .kl sur la SD.
+ * @return true si chargé avec succès, false sinon (layout inchangé).
+ */
+bool ttf_hid_load_layout(const char* path);
+
+/**
+ * @brief Réinitialise le layout au QWERTY US intégré (par défaut).
+ */
+void ttf_hid_reset_layout(void);
