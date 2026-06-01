@@ -40,6 +40,12 @@
 // Largeur affichable en FontSecondary ≈ 21 chars par ligne
 #define DISPLAY_COLS   21
 
+// Nombre de lignes d'historique visibles simultanément à l'écran
+#define HIST_VISIBLE   4
+// Largeur de copie d'une ligne d'historique (> DISPLAY_COLS pour que la
+// troncature "..." se déclenche correctement, sans copier 256 o sur la pile)
+#define HIST_LINE_LEN  (DISPLAY_COLS + 8)
+
 // ============================================================
 // Helpers internes
 // ============================================================
@@ -90,7 +96,15 @@ static void draw_layout_line(Canvas* canvas, const char* layout) {
                             AlignCenter, AlignBottom, buf);
 }
 
-static void draw_waiting_bt(Canvas* canvas, const char* layout) {
+/** Indicateur discret "Up:Log" en haut à droite si l'historique est non vide. */
+static void draw_history_hint(Canvas* canvas, size_t history_count) {
+    if(history_count == 0) return;
+    canvas_set_font(canvas, FontSecondary);
+    canvas_draw_str_aligned(canvas, SCREEN_W - 2, CONTENT_TOP + 5,
+                            AlignRight, AlignCenter, "Up:Log");
+}
+
+static void draw_waiting_bt(Canvas* canvas, const char* layout, size_t history_count) {
     draw_header(canvas);
 
     canvas_set_font(canvas, FontSecondary);
@@ -99,11 +113,12 @@ static void draw_waiting_bt(Canvas* canvas, const char* layout) {
     canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y + 2,
                             AlignCenter, AlignCenter, "Connect from PC");
 
+    draw_history_hint(canvas, history_count);
     draw_layout_line(canvas, layout);
     draw_footer(canvas, "Left:Kbd", "Back:Exit");
 }
 
-static void draw_connected(Canvas* canvas, const char* layout) {
+static void draw_connected(Canvas* canvas, const char* layout, size_t history_count) {
     draw_header(canvas);
 
     canvas_set_font(canvas, FontSecondary);
@@ -112,6 +127,7 @@ static void draw_connected(Canvas* canvas, const char* layout) {
     canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y + 2,
                             AlignCenter, AlignCenter, "Send text from client");
 
+    draw_history_hint(canvas, history_count);
     draw_layout_line(canvas, layout);
     draw_footer(canvas, "Left:Kbd", "Back:Exit");
 }
@@ -200,6 +216,46 @@ static void draw_done(Canvas* canvas) {
                             AlignCenter, AlignCenter, "Returning...");
 }
 
+/**
+ * Liste de l'historique. `lines` contient la fenêtre visible (déjà extraite
+ * sous mutex), `n` son nombre d'entrées, `sel_in_win` l'index sélectionné
+ * dans cette fenêtre, `pos`/`total` la position 1-based pour l'indicateur.
+ */
+static void draw_history(
+    Canvas* canvas,
+    char lines[HIST_VISIBLE][HIST_LINE_LEN],
+    size_t n,
+    size_t sel_in_win,
+    size_t pos,
+    size_t total) {
+    draw_header(canvas);
+    canvas_set_font(canvas, FontSecondary);
+
+    // Indicateur de position "n/total" en haut à droite
+    char pos_buf[12];
+    snprintf(pos_buf, sizeof(pos_buf), "%u/%u", (unsigned)pos, (unsigned)total);
+    canvas_draw_str_aligned(canvas, SCREEN_W - 2, CONTENT_TOP + 5,
+                            AlignRight, AlignCenter, pos_buf);
+
+    int y = CONTENT_TOP + 9;
+    char buf[DISPLAY_COLS + 4];
+    for(size_t i = 0; i < n; i++) {
+        truncate_str(lines[i], buf, DISPLAY_COLS - 1);
+        if(i == sel_in_win) {
+            // Surbrillance : barre inversée
+            canvas_draw_box(canvas, 0, y - 7, SCREEN_W, 9);
+            canvas_set_color(canvas, ColorWhite);
+            canvas_draw_str(canvas, 3, y, buf);
+            canvas_set_color(canvas, ColorBlack);
+        } else {
+            canvas_draw_str(canvas, 3, y, buf);
+        }
+        y += 10;
+    }
+
+    draw_footer(canvas, "Back", "OK:Send");
+}
+
 static void draw_error(Canvas* canvas, const char* error_msg) {
     draw_header(canvas);
 
@@ -227,6 +283,7 @@ void ttf_view_draw_callback(Canvas* canvas, void* context) {
     AppState state        = app->state;
     size_t   text_len     = app->text_len;
     bool     usb_detected = (app->usb_detect_tick != 0);
+    size_t   hist_count   = app->history_count;
     char text_copy[TTF_TEXT_BUFFER_SIZE];
     char err_copy[TTF_ERROR_MSG_SIZE];
     char layout_copy[TTF_LAYOUT_NAME_SIZE];
@@ -236,16 +293,38 @@ void ttf_view_draw_callback(Canvas* canvas, void* context) {
     err_copy[sizeof(err_copy) - 1] = '\0';
     strncpy(layout_copy, app->layout_name, sizeof(layout_copy) - 1);
     layout_copy[sizeof(layout_copy) - 1] = '\0';
+
+    // Snapshot de la fenêtre d'historique visible (uniquement si pertinent)
+    char   hist_win[HIST_VISIBLE][HIST_LINE_LEN];
+    size_t hist_win_n     = 0;
+    size_t hist_sel_inwin = 0;
+    size_t hist_pos       = 0;
+    if(state == AppStateHistory && hist_count > 0) {
+        size_t sel = app->history_sel;
+        if(sel >= hist_count) sel = hist_count - 1;
+        size_t win_start = 0;
+        if(sel >= HIST_VISIBLE) win_start = sel - (HIST_VISIBLE - 1);
+        for(size_t i = 0; i < HIST_VISIBLE && (win_start + i) < hist_count; i++) {
+            strncpy(hist_win[i], app->history[win_start + i], HIST_LINE_LEN - 1);
+            hist_win[i][HIST_LINE_LEN - 1] = '\0';
+            hist_win_n++;
+        }
+        hist_sel_inwin = sel - win_start;
+        hist_pos       = sel + 1; // position 1-based
+    }
     furi_mutex_release(app->mutex);
 
     canvas_clear(canvas);
 
     switch(state) {
     case AppStateWaitingBT:
-        draw_waiting_bt(canvas, layout_copy);
+        draw_waiting_bt(canvas, layout_copy, hist_count);
         break;
     case AppStateConnected:
-        draw_connected(canvas, layout_copy);
+        draw_connected(canvas, layout_copy, hist_count);
+        break;
+    case AppStateHistory:
+        draw_history(canvas, hist_win, hist_win_n, hist_sel_inwin, hist_pos, hist_count);
         break;
     case AppStateTextReceived:
         draw_text_received(canvas, text_copy, text_len);
