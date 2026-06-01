@@ -32,6 +32,7 @@
 #define TTF_LAYOUT_NAME_SIZE  24     // longueur max du nom de layout affiché
 #define TTF_LAYOUT_PATH_SIZE  128    // longueur max du chemin vers le fichier .kl
 #define TTF_USB_CONNECT_DELAY_MS 1500 // délai après détection USB avant envoi
+#define TTF_HISTORY_MAX       10     // nombre max d'entrées dans l'historique (RAM)
 
 // ============================================================
 // Machine d'états
@@ -43,6 +44,7 @@ typedef enum {
     AppStateWaitingUSB,       // OK pressé mais USB HID non connecté — attente branchement
     AppStateSending,          // Envoi HID en cours
     AppStateDone,             // Terminé (retour auto)
+    AppStateHistory,          // Consultation de l'historique des envois
     AppStateError,            // Erreur
 } AppState;
 
@@ -99,4 +101,10 @@ typedef struct {
 
     // Tick de détection USB (état WaitingUSB) — 0 = USB pas encore vu
     uint32_t usb_detect_tick;
+
+    // Historique des textes envoyés (RAM uniquement — effacé à la fermeture de l'app)
+    char     history[TTF_HISTORY_MAX][TTF_TEXT_BUFFER_SIZE];
+    size_t   history_count;        // nombre d'entrées valides (0..TTF_HISTORY_MAX)
+    size_t   history_sel;          // index sélectionné dans la vue historique
+    AppState history_return_state; // état vers lequel revenir en quittant l'historique
 } TransTheFlipApp;

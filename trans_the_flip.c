@@ -235,6 +235,35 @@ static void reset_text_buffer(TransTheFlipApp* app) {
 }
 
 // ============================================================
+// Historique des textes envoyés (RAM uniquement).
+// La plus récente est en index 0. Effacé à la fermeture de l'app
+// (jamais persisté sur la carte SD). Appel sous mutex.
+// ============================================================
+static void history_push(TransTheFlipApp* app, const char* text, size_t len) {
+    if(len == 0 || !text || !text[0]) return;
+
+    // Éviter un doublon consécutif (même texte que la dernière entrée)
+    if(app->history_count > 0 &&
+       strncmp(app->history[0], text, TTF_TEXT_BUFFER_SIZE) == 0) {
+        return;
+    }
+
+    // Décaler les entrées existantes vers le bas pour libérer l'index 0
+    int last = (app->history_count < TTF_HISTORY_MAX) ? (int)app->history_count
+                                                      : TTF_HISTORY_MAX - 1;
+    for(int i = last; i > 0; i--) {
+        memcpy(app->history[i], app->history[i - 1], TTF_TEXT_BUFFER_SIZE);
+    }
+
+    strncpy(app->history[0], text, TTF_TEXT_BUFFER_SIZE - 1);
+    app->history[0][TTF_TEXT_BUFFER_SIZE - 1] = '\0';
+
+    if(app->history_count < TTF_HISTORY_MAX) {
+        app->history_count++;
+    }
+}
+
+// ============================================================
 // Point d'entrée de l'application
 // ============================================================
 int32_t trans_the_flip_app(void* p) {
@@ -344,7 +373,17 @@ int32_t trans_the_flip_app(void* p) {
                     switch(ev.input.key) {
 
                     case InputKeyOk:
-                        if(app->state == AppStateTextReceived) {
+                        if(app->state == AppStateHistory) {
+                            // Recharger l'entrée sélectionnée → écran de confirmation
+                            if(app->history_sel < app->history_count) {
+                                strncpy(app->received_text,
+                                        app->history[app->history_sel],
+                                        TTF_TEXT_BUFFER_SIZE - 1);
+                                app->received_text[TTF_TEXT_BUFFER_SIZE - 1] = '\0';
+                                app->text_len = strlen(app->received_text);
+                                app->state    = AppStateTextReceived;
+                            }
+                        } else if(app->state == AppStateTextReceived) {
                             // Vérifier que le Flipper est bien branché en USB HID
                             // à un PC avant de lancer l'envoi
                             if(furi_hal_hid_is_connected()) {
@@ -361,6 +400,30 @@ int32_t trans_the_flip_app(void* p) {
                             // OK depuis l'écran d'erreur → retour
                             app->state = AppStateWaitingBT;
                             strncpy(app->error_msg, "", 1);
+                        }
+                        break;
+
+                    case InputKeyUp:
+                        if(app->state == AppStateHistory) {
+                            // Naviguer vers l'entrée plus récente
+                            if(app->history_sel > 0) app->history_sel--;
+                        } else if(app->state == AppStateWaitingBT ||
+                                  app->state == AppStateConnected) {
+                            // Ouvrir l'historique (s'il contient au moins une entrée)
+                            if(app->history_count > 0) {
+                                app->history_return_state = app->state;
+                                app->history_sel          = 0;
+                                app->state                = AppStateHistory;
+                            }
+                        }
+                        break;
+
+                    case InputKeyDown:
+                        if(app->state == AppStateHistory) {
+                            // Naviguer vers l'entrée plus ancienne
+                            if(app->history_sel + 1 < app->history_count) {
+                                app->history_sel++;
+                            }
                         }
                         break;
 
@@ -402,6 +465,10 @@ int32_t trans_the_flip_app(void* p) {
                             reset_text_buffer(app);
                             app->done_tick = 0;
                             break;
+                        case AppStateHistory:
+                            // Quitter l'historique → revenir à l'état précédent
+                            app->state = app->history_return_state;
+                            break;
                         case AppStateWaitingBT:
                         case AppStateConnected:
                         default:
@@ -427,6 +494,8 @@ int32_t trans_the_flip_app(void* p) {
                 }
                 app->state    = AppStateDone;
                 app->done_tick = furi_get_tick();
+                // Enregistrer le texte envoyé dans l'historique (avant reset)
+                history_push(app, app->received_text, app->text_len);
                 reset_text_buffer(app);
                 ttf_bt_send_status("OK\n");
                 break;
