@@ -53,8 +53,12 @@ from trans_client import (
     FLIPPER_RX_CHAR_UUID,
     FLIPPER_TX_CHAR_UUID,
     BLE_CHUNK_SIZE,
-    SCAN_TIMEOUT,
 )
+
+# BLE scan duration for the GUI (seconds). Deliberately shorter than the CLI
+# default: devices stream in live through the detection callback, so a nearby
+# Flipper usually shows up within the first second — no need to wait longer.
+GUI_SCAN_TIMEOUT = 5.0
 
 # Flipper → PC status codes, mapped to human-readable lines.
 STATUS_MAP = {
@@ -70,6 +74,15 @@ SPECIAL_KEYS = [
     "[UP]", "[DOWN]", "[LEFT]", "[RIGHT]", "[DELAY:500]",
     "[CTRL+c]", "[CTRL+v]", "[CTRL+a]", "[ALT+F4]", "[WIN+r]",
 ]
+
+
+def _order_devices(found: dict) -> list:
+    """Return [(label, address)] sorted with Flipper devices first, then by name.
+
+    `found` maps address -> (label, address, is_flipper).
+    """
+    entries = sorted(found.values(), key=lambda e: (not e[2], e[0].lower()))
+    return [(label, address) for (label, address, _is_flipper) in entries]
 
 
 # ============================================================
@@ -115,29 +128,43 @@ class BleWorker:
     # ---- coroutines (run on the asyncio thread) ----
     async def _scan(self) -> None:
         self._emit("scanning", True)
-        self._emit("log", f"🔍  Scanning BLE ({SCAN_TIMEOUT:.0f}s)...")
-        try:
-            results = await BleakScanner.discover(timeout=SCAN_TIMEOUT, return_adv=True)
-        except Exception as exc:  # noqa: BLE001
-            self._emit("log", f"❌  Scan error: {exc}")
-            self._emit("scanning", False)
-            return
+        self._emit("log", f"🔍  Scanning BLE ({GUI_SCAN_TIMEOUT:.0f}s)...")
 
-        flippers, others = [], []
-        for dev, adv in results.values():
+        # Collect devices live via a detection callback (address -> entry).
+        # This is more robust than discover() across backends and lets the
+        # dropdown fill as devices are seen, so a nearby Flipper appears almost
+        # immediately instead of only after the full timeout has elapsed.
+        found: dict[str, tuple] = {}
+
+        def _on_detection(dev, adv) -> None:
             uuids_lower = [u.lower() for u in (adv.service_uuids or [])]
             is_flipper = (FLIPPER_SERVICE_UUID in uuids_lower) or (
                 bool(dev.name) and "flipper" in dev.name.lower()
             )
             label = f"{dev.name or '(no name)'}  [{dev.address}]"
-            (flippers if is_flipper else others).append((label, dev.address))
+            found[dev.address] = (label, dev.address, is_flipper)
+            self._emit("devices", _order_devices(found))
 
-        ordered = flippers + others
+        try:
+            scanner = BleakScanner(detection_callback=_on_detection)
+            await scanner.start()
+            await asyncio.sleep(GUI_SCAN_TIMEOUT)
+            await scanner.stop()
+        except Exception as exc:  # noqa: BLE001
+            self._emit("log", f"❌  Scan error: {exc}")
+            self._emit(
+                "log",
+                "    → Check that Bluetooth is on and the bluetooth service is running.",
+            )
+            self._emit("scanning", False)
+            return
+
+        n_flippers = sum(1 for entry in found.values() if entry[2])
         self._emit(
             "log",
-            f"📡  {len(results)} device(s) found, {len(flippers)} Flipper(s).",
+            f"📡  {len(found)} device(s) found, {n_flippers} Flipper(s).",
         )
-        self._emit("devices", ordered)
+        self._emit("devices", _order_devices(found))
         self._emit("scanning", False)
 
     async def _connect(self, address: str, name: str) -> None:
@@ -406,7 +433,11 @@ class App(ctk.CTk):
         labels = list(self._dev_map.keys())
         if labels:
             self.device_menu.configure(values=labels)
-            self.device_var.set(labels[0])
+            # Keep the user's current pick if it's still in range; otherwise
+            # default to the first entry (Flippers are sorted first). This stops
+            # the live updates during a scan from resetting the selection.
+            if self.device_var.get() not in self._dev_map:
+                self.device_var.set(labels[0])
         else:
             self.device_menu.configure(values=["(no devices)"])
             self.device_var.set("(no devices)")
