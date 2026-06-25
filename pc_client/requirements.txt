@@ -1,1 +1,2 @@
 bleak>=0.21.0
+customtkinter>=5.2.0  # GUI only (trans_gui.py); the CLI needs only bleak
