@@ -272,7 +272,13 @@ class App(ctk.CTk):
         self.minsize(660, 500)
 
         self._events: "queue.Queue[tuple[str, object]]" = queue.Queue()
-        self._worker = BleWorker(self._events.put)
+        # Wrap put() so emit(kind, payload) enqueues a single (kind, payload)
+        # tuple. Passing self._events.put directly would call it as
+        # put(item=kind, block=payload) — only the kind string lands in the
+        # queue and the consumer's `kind, payload = ...` unpacking blows up.
+        self._worker = BleWorker(
+            lambda kind, payload: self._events.put((kind, payload))
+        )
         self._dev_map: dict[str, str] = {}
         self._connected = False
 
