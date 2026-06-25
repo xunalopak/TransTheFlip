@@ -253,6 +253,12 @@ class BleWorker:
     # ---- bleak callbacks (asyncio thread) ----
     def _on_notify(self, _characteristic: BleakGATTCharacteristic, data: bytearray) -> None:
         msg = data.decode("utf-8", errors="replace").strip()
+        # The Flipper only ever sends meaningful status tokens (RECV/OK/ERR/
+        # CANCEL). Empty notifications come from the BLE serial profile's
+        # flow-control / keep-alive traffic — drop them so they don't spam the
+        # log with blank "📡 Flipper:" lines.
+        if not msg:
+            return
         self._emit("notify", msg)
 
     def _on_disconnected(self, _client: BleakClient) -> None:
