@@ -70,6 +70,11 @@ _last_status: str = ""
 def _notification_handler(characteristic: BleakGATTCharacteristic, data: bytearray) -> None:
     global _last_status
     msg = data.decode("utf-8", errors="replace").strip()
+    # The Flipper only ever sends meaningful status tokens (RECV/OK/ERR/CANCEL).
+    # Empty notifications come from the BLE serial profile's flow-control /
+    # keep-alive traffic — drop them so they don't spam blank "Flipper:" lines.
+    if not msg:
+        return
     _last_status = msg
     status_map = {
         "OK":     "✅  Flipper: text sent successfully",
