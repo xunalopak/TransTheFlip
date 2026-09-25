@@ -97,9 +97,11 @@ class BleWorker:
     def __init__(self, emit):
         self._emit = emit
         self._loop = asyncio.new_event_loop()
+        self._client: Optional[BleakClient] = None
+        self._devices = {}
+        self._connect_task = None
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
-        self._client: Optional[BleakClient] = None
 
     def _run(self) -> None:
         asyncio.set_event_loop(self._loop)
@@ -122,8 +124,15 @@ class BleWorker:
         self._submit(self._send(text))
 
     def shutdown(self) -> None:
-        self._submit(self._disconnect())
-        self._loop.call_soon_threadsafe(self._loop.stop)
+        future = asyncio.run_coroutine_threadsafe(self._shutdown(), self._loop)
+        future.add_done_callback(lambda _: self._loop.call_soon_threadsafe(self._loop.stop))
+
+    async def _shutdown(self) -> None:
+        await self._disconnect()
+        tasks = [task for task in asyncio.all_tasks() if task is not asyncio.current_task()]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     # ---- coroutines (run on the asyncio thread) ----
     async def _scan(self) -> None:
@@ -137,6 +146,7 @@ class BleWorker:
         found: dict[str, tuple] = {}
 
         def _on_detection(dev, adv) -> None:
+            self._devices[dev.address] = dev
             uuids_lower = [u.lower() for u in (adv.service_uuids or [])]
             is_flipper = (FLIPPER_SERVICE_UUID in uuids_lower) or (
                 bool(dev.name) and "flipper" in dev.name.lower()
@@ -146,10 +156,8 @@ class BleWorker:
             self._emit("devices", _order_devices(found))
 
         try:
-            scanner = BleakScanner(detection_callback=_on_detection)
-            await scanner.start()
-            await asyncio.sleep(GUI_SCAN_TIMEOUT)
-            await scanner.stop()
+            async with BleakScanner(detection_callback=_on_detection):
+                await asyncio.sleep(GUI_SCAN_TIMEOUT)
         except Exception as exc:  # noqa: BLE001
             self._emit("log", f"❌  Scan error: {exc}")
             self._emit(
@@ -168,57 +176,54 @@ class BleWorker:
         self._emit("scanning", False)
 
     async def _connect(self, address: str, name: str) -> None:
+        if self._connect_task is not None or self._client is not None:
+            return
+        self._connect_task = asyncio.current_task()
         self._emit("log", f"🔗  Connecting to {name}...")
+        self._emit("log", "Confirm the pairing code on the Flipper if prompted (up to 60s).")
         try:
             client = BleakClient(
-                address, timeout=15.0, disconnected_callback=self._on_disconnected
+                self._devices.get(address, address), timeout=60.0, pair=True,
+                winrt={"use_cached_services": False},
+                disconnected_callback=self._on_disconnected,
             )
+            self._client = client
             await client.connect()
             if not client.is_connected:
-                self._emit("log", "❌  Connection failed.")
-                self._emit("disconnected", None)
-                return
-            self._client = client
-            mtu = getattr(client, "mtu_size", BLE_CHUNK_SIZE)
-            self._emit("log", f"✅  Connected! MTU={mtu}")
-
-            # Pairing (bonding) is mandatory: the RX/TX characteristics require
-            # an authenticated, encrypted link or writes are silently rejected.
-            try:
-                paired = await client.pair()
-                if paired:
-                    self._emit("log", "🔐  Pairing established (encrypted link).")
-                else:
-                    self._emit(
-                        "log",
-                        "⚠️  Pairing not confirmed — confirm the code on the Flipper.",
-                    )
-            except Exception as exc:  # noqa: BLE001
-                self._emit("log", f"⚠️  Automatic pairing failed: {exc}")
+                raise RuntimeError("Connection failed.")
 
             # Verify the Flipper serial service is actually present.
             service_uuids = [s.uuid.lower() for s in client.services]
             if FLIPPER_SERVICE_UUID not in service_uuids:
-                self._emit(
-                    "log",
-                    "⚠️  Flipper serial service not found — is the app running on the Flipper?",
+                raise RuntimeError(
+                    "Flipper serial service not found — open TransTheFlip on the Flipper, "
+                    "close other Bluetooth clients, then reconnect."
                 )
-                await client.disconnect()
-                self._client = None
-                self._emit("disconnected", None)
-                return
 
             await client.start_notify(FLIPPER_TX_CHAR_UUID, self._on_notify)
+            if self._client is not client or not client.is_connected:
+                raise RuntimeError("Device disconnected during setup.")
             self._emit("connected", name)
+        except asyncio.CancelledError:
+            await self._disconnect()
+            raise
         except Exception as exc:  # noqa: BLE001
             self._emit("log", f"❌  BLE error: {exc}")
-            self._client = None
-            self._emit("disconnected", None)
+            await self._disconnect()
+        finally:
+            self._connect_task = None
 
     async def _disconnect(self) -> None:
+        task = self._connect_task
+        if task is not None and task is not asyncio.current_task():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            return
         if self._client is not None:
+            client = self._client
+            self._client = None
             try:
-                await self._client.disconnect()
+                await client.disconnect()
             except Exception as exc:  # noqa: BLE001
                 self._emit("log", f"⚠️  Disconnect error: {exc}")
             self._client = None
@@ -262,6 +267,8 @@ class BleWorker:
         self._emit("notify", msg)
 
     def _on_disconnected(self, _client: BleakClient) -> None:
+        if _client is not self._client:
+            return
         self._client = None
         self._emit("log", "🔌  Link lost (device disconnected).")
         self._emit("disconnected", None)
@@ -287,6 +294,7 @@ class App(ctk.CTk):
         )
         self._dev_map: dict[str, str] = {}
         self._connected = False
+        self._busy = False
 
         self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -305,21 +313,26 @@ class App(ctk.CTk):
         self.status_label = ctk.CTkLabel(
             bar, text="● Disconnected", text_color="#e05555", anchor="w"
         )
-        self.status_label.grid(row=0, column=0, padx=(10, 12), pady=8)
+        self.status_label.grid(row=0, column=0, columnspan=5, sticky="w", padx=10, pady=8)
 
         self.device_var = ctk.StringVar(value="(scan first)")
         self.device_menu = ctk.CTkOptionMenu(
-            bar, values=["(scan first)"], variable=self.device_var, width=320
+            bar, values=["(scan first)"], variable=self.device_var, width=240
         )
-        self.device_menu.grid(row=0, column=1, sticky="ew", padx=6, pady=8)
+        self.device_menu.grid(row=1, column=0, columnspan=2, sticky="ew", padx=6, pady=8)
 
         self.scan_btn = ctk.CTkButton(bar, text="Scan", width=80, command=self._on_scan)
-        self.scan_btn.grid(row=0, column=2, padx=6, pady=8)
+        self.scan_btn.grid(row=1, column=2, padx=6, pady=8)
 
         self.connect_btn = ctk.CTkButton(
             bar, text="Connect", width=110, command=self._on_connect_click
         )
-        self.connect_btn.grid(row=0, column=3, padx=(6, 10), pady=8)
+        self.connect_btn.grid(row=1, column=3, padx=6, pady=8)
+        self.disconnect_btn = ctk.CTkButton(
+            bar, text="Déconnecter", width=110,
+            command=self._on_disconnect_click, state="disabled",
+        )
+        self.disconnect_btn.grid(row=1, column=4, padx=(6, 10), pady=8)
 
         # Row 1 — text entry + send
         entry_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -377,11 +390,11 @@ class App(ctk.CTk):
     # ---- button handlers ----
     def _on_scan(self) -> None:
         self.scan_btn.configure(state="disabled")
+        self.connect_btn.configure(state="disabled")
         self._worker.scan()
 
     def _on_connect_click(self) -> None:
         if self._connected:
-            self._worker.disconnect()
             return
         label = self.device_var.get()
         address = self._dev_map.get(label)
@@ -389,8 +402,19 @@ class App(ctk.CTk):
             self._log("⚠️  Select a device first (click Scan).")
             return
         self.connect_btn.configure(state="disabled")
+        self.scan_btn.configure(state="disabled")
+        self.device_menu.configure(state="disabled")
+        self.disconnect_btn.configure(state="normal")
+        self._busy = True
         self._set_status("● Connecting...", "#e0a955")
         self._worker.connect(address, label)
+
+    def _on_disconnect_click(self) -> None:
+        self._connected = False
+        self.disconnect_btn.configure(state="disabled")
+        self.send_btn.configure(state="disabled")
+        self._set_status("● Disconnecting...", "#e0a955")
+        self._worker.disconnect()
 
     def _on_send(self, _event=None) -> None:
         text = self.entry.get().strip()
@@ -421,19 +445,26 @@ class App(ctk.CTk):
                 if not self._connected:
                     self._set_status("● Scanning...", "#e0a955")
             else:
-                self.scan_btn.configure(state="normal")
-                if not self._connected:
+                if not self._connected and not self._busy:
+                    self.scan_btn.configure(state="normal")
+                    self.connect_btn.configure(state="normal")
                     self._set_status("● Disconnected", "#e05555")
         elif kind == "devices":
             self._populate_devices(payload)  # type: ignore[arg-type]
         elif kind == "connected":
             self._connected = True
-            self.connect_btn.configure(text="Disconnect", state="normal")
+            self._busy = False
+            self.connect_btn.configure(state="disabled")
+            self.disconnect_btn.configure(state="normal")
             self.send_btn.configure(state="normal")
             self._set_status(f"● Connected: {payload}", "#55cc66")
         elif kind == "disconnected":
             self._connected = False
-            self.connect_btn.configure(text="Connect", state="normal")
+            self._busy = False
+            self.connect_btn.configure(state="normal")
+            self.scan_btn.configure(state="normal")
+            self.device_menu.configure(state="normal")
+            self.disconnect_btn.configure(state="disabled")
             self.send_btn.configure(state="disabled")
             self._set_status("● Disconnected", "#e05555")
         elif kind == "notify":
@@ -456,11 +487,15 @@ class App(ctk.CTk):
 
     # ---- shutdown ----
     def _on_close(self) -> None:
-        try:
-            self._worker.shutdown()
-        except Exception:  # noqa: BLE001
-            pass
-        self.after(250, self.destroy)
+        self.withdraw()
+        self._worker.shutdown()
+        self._wait_for_shutdown()
+
+    def _wait_for_shutdown(self) -> None:
+        if self._worker._thread.is_alive():
+            self.after(50, self._wait_for_shutdown)
+        else:
+            self.destroy()
 
 
 def main() -> None:

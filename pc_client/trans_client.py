@@ -232,28 +232,15 @@ async def main() -> None:
 
     print(f"🔗  Connecting to {device.name}...")
     try:
-        async with BleakClient(device.address, timeout=15.0) as client:
+        async with BleakClient(
+            device, timeout=60.0, pair=True, winrt={"use_cached_services": False}
+        ) as client:
             if not client.is_connected:
                 print("❌  Connection failed.")
                 return
 
             mtu = getattr(client, "mtu_size", BLE_CHUNK_SIZE)
             print(f"✅  Connected! MTU={mtu}")
-
-            # --- Pairing (bonding) is mandatory ---
-            # The Flipper serial RX/TX characteristics require ATTR_PERMISSION_AUTHEN:
-            # the link must be authenticated and encrypted. Without bonding, any write
-            # to RX is silently rejected by the security layer.
-            try:
-                paired = await client.pair()
-                if paired:
-                    print("🔐  Pairing established (encrypted link).")
-                else:
-                    print("⚠️   Pairing not confirmed — confirm the code shown on the Flipper screen.")
-            except Exception as exc:  # noqa: BLE001
-                print(f"⚠️   Automatic pairing failed: {exc}")
-                print("    → Windows: Settings > Bluetooth & devices > Add a device,")
-                print("      confirm the code shown on the Flipper screen, then restart the client.")
 
             # Verify that the Flipper serial service is present
             service_uuids = [s.uuid.lower() for s in client.services]
