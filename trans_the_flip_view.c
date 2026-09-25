@@ -41,7 +41,7 @@
 #define DISPLAY_COLS   21
 
 // Nombre de lignes d'historique visibles simultanément à l'écran
-#define HIST_VISIBLE   4
+#define HIST_VISIBLE   3
 // Largeur de copie d'une ligne d'historique (> DISPLAY_COLS pour que la
 // troncature "..." se déclenche correctement, sans copier 256 o sur la pile)
 #define HIST_LINE_LEN  (DISPLAY_COLS + 8)
@@ -96,14 +96,6 @@ static void draw_layout_line(Canvas* canvas, const char* layout) {
                             AlignCenter, AlignBottom, buf);
 }
 
-/** Indicateur discret "Up:Log" en haut à droite si l'historique est non vide. */
-static void draw_history_hint(Canvas* canvas, size_t history_count) {
-    if(history_count == 0) return;
-    canvas_set_font(canvas, FontSecondary);
-    canvas_draw_str_aligned(canvas, SCREEN_W - 2, CONTENT_TOP + 5,
-                            AlignRight, AlignCenter, "Up:Log");
-}
-
 static void draw_waiting_bt(Canvas* canvas, const char* layout, size_t history_count) {
     draw_header(canvas);
 
@@ -111,11 +103,10 @@ static void draw_waiting_bt(Canvas* canvas, const char* layout, size_t history_c
     canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y - 8,
                             AlignCenter, AlignCenter, "Waiting for BLE...");
     canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y + 2,
-                            AlignCenter, AlignCenter, "Connect from PC");
+                            AlignCenter, AlignCenter,
+                            history_count ? "PC connect / Up:Log" : "Connect from PC");
 
-    draw_history_hint(canvas, history_count);
     draw_layout_line(canvas, layout);
-    draw_footer(canvas, "Left:Kbd", "Back:Exit");
 }
 
 static void draw_connected(Canvas* canvas, const char* layout, size_t history_count) {
@@ -125,11 +116,10 @@ static void draw_connected(Canvas* canvas, const char* layout, size_t history_co
     canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y - 8,
                             AlignCenter, AlignCenter, "BLE Connected!");
     canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y + 2,
-                            AlignCenter, AlignCenter, "Send text from client");
+                            AlignCenter, AlignCenter,
+                            history_count ? "Send text / Up:Log" : "Send text from client");
 
-    draw_history_hint(canvas, history_count);
     draw_layout_line(canvas, layout);
-    draw_footer(canvas, "Left:Kbd", "Back:Exit");
 }
 
 static void draw_text_received(Canvas* canvas, const char* text, size_t offset, uint32_t delay) {
@@ -231,7 +221,8 @@ static void draw_history(
     canvas_draw_str_aligned(canvas, SCREEN_W - 2, CONTENT_TOP + 5,
                             AlignRight, AlignCenter, pos_buf);
 
-    int y = CONTENT_TOP + 9;
+    // Heading at y=20; three rows at 30/40/50, clear of the footer at y=53.
+    int y = CONTENT_TOP + 15;
     char buf[DISPLAY_COLS + 4];
     for(size_t i = 0; i < n; i++) {
         truncate_str(lines[i], buf, DISPLAY_COLS - 1);

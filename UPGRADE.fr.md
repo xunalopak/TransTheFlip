@@ -1,5 +1,10 @@
 # Mise à jour du client PC et du Flipper
 
+**Correctif v2.0.2 :** suppression du double affichage des commandes au bas de
+l'écran Flipper. L'historique affiche trois lignes sans recouvrir le pied d'écran,
+et l'indication `Up:Log` ne recouvre plus le message central. Remplacer le FAP ;
+le client PC v2.0.1 reste compatible.
+
 **Correctif v2.0.1 :** le client PC écoute maintenant le canal des réponses série
 du Flipper (FE61), et non le contrôle de débit (FE63). Cela corrige la déconnexion
 après le message « ne répond pas au protocole TTF1 ». Si le FAP v2.0.0 est déjà
