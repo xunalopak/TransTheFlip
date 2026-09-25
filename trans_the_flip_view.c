@@ -132,39 +132,30 @@ static void draw_connected(Canvas* canvas, const char* layout, size_t history_co
     draw_footer(canvas, "Left:Kbd", "Back:Exit");
 }
 
-static void draw_text_received(Canvas* canvas, const char* text, size_t text_len) {
+static void draw_text_received(Canvas* canvas, const char* text, size_t offset, uint32_t delay) {
     draw_header(canvas);
 
     canvas_set_font(canvas, FontSecondary);
-    canvas_draw_str(canvas, 2, CONTENT_TOP + 7, "Received:");
+    char preview[64];
+    size_t total = ttf_preview(text, offset, preview, sizeof(preview));
+    char info[32];
+    snprintf(info, sizeof(info), "%u/%u R:%lums U/D", (unsigned)(offset / 21 + 1),
+        (unsigned)((total + 20) / 21), (unsigned long)delay);
+    canvas_draw_str(canvas, 2, CONTENT_TOP + 7, info);
 
     // Afficher jusqu'à 3 lignes du texte (21 chars max par ligne)
-    char line_buf[DISPLAY_COLS + 4]; // +4 pour '...\0'
+    char line_buf[DISPLAY_COLS + 1];
     int y = CONTENT_TOP + 17;
     size_t start = 0;
     const int max_lines = 3;
 
-    for(int line = 0; line < max_lines && start < text_len; line++) {
-        bool is_last = (line == max_lines - 1);
-        size_t remaining = text_len - start;
-
-        if(remaining <= DISPLAY_COLS) {
-            strncpy(line_buf, text + start, remaining);
-            line_buf[remaining] = '\0';
-            start += remaining;
-        } else if(is_last) {
-            // Dernière ligne visible, tronquer avec "..."
-            strncpy(line_buf, text + start, DISPLAY_COLS - 3);
-            line_buf[DISPLAY_COLS - 3] = '.';
-            line_buf[DISPLAY_COLS - 2] = '.';
-            line_buf[DISPLAY_COLS - 1] = '.';
-            line_buf[DISPLAY_COLS]     = '\0';
-            start = text_len;
-        } else {
-            strncpy(line_buf, text + start, DISPLAY_COLS);
-            line_buf[DISPLAY_COLS] = '\0';
-            start += DISPLAY_COLS;
-        }
+    canvas_set_font(canvas, FontKeyboard);
+    for(int line = 0; line < max_lines && start < strlen(preview); line++) {
+        size_t count = strlen(preview) - start;
+        if(count > DISPLAY_COLS) count = DISPLAY_COLS;
+        memcpy(line_buf, preview + start, count);
+        line_buf[count] = '\0';
+        start += count;
         canvas_draw_str(canvas, 2, y, line_buf);
         y += 8;
     }
@@ -193,16 +184,19 @@ static void draw_waiting_usb(Canvas* canvas, bool usb_detected) {
     draw_footer(canvas, "Back:Cancel", NULL);
 }
 
-static void draw_sending(Canvas* canvas) {
+static void draw_sending(Canvas* canvas, size_t progress, size_t total) {
     draw_header(canvas);
 
     canvas_set_font(canvas, FontSecondary);
     canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y - 4,
                             AlignCenter, AlignCenter, "Sending keystrokes...");
-    canvas_draw_str_aligned(canvas, SCREEN_W / 2, CONTENT_MID_Y + 8,
-                            AlignCenter, AlignCenter, "Do not unplug USB");
-    // Petite animation : carré clignotant au centre
-    canvas_draw_box(canvas, 58, CONTENT_MID_Y + 18, 12, 4);
+    char info[24];
+    unsigned percent = total ? progress * 100 / total : 0;
+    snprintf(info, sizeof(info), "%u%%", percent);
+    canvas_draw_str(canvas, 52, 43, info);
+    canvas_draw_frame(canvas, 4, 46, 120, 5);
+    canvas_draw_box(canvas, 5, 47, percent * 118 / 100, 3);
+    draw_footer(canvas, "Back:STOP", NULL);
 }
 
 static void draw_done(Canvas* canvas) {
@@ -282,6 +276,11 @@ void ttf_view_draw_callback(Canvas* canvas, void* context) {
     furi_mutex_acquire(app->mutex, FuriWaitForever);
     AppState state        = app->state;
     size_t   text_len     = app->text_len;
+    bool bt_connected = app->bt_connected;
+    bool usb_connected = app->usb_connected;
+    size_t preview_offset = app->preview_offset;
+    size_t progress = app->send_progress;
+    uint32_t delay = app->key_delay_ms;
     bool     usb_detected = (app->usb_detect_tick != 0);
     size_t   hist_count   = app->history_count;
     char text_copy[TTF_TEXT_BUFFER_SIZE];
@@ -327,13 +326,13 @@ void ttf_view_draw_callback(Canvas* canvas, void* context) {
         draw_history(canvas, hist_win, hist_win_n, hist_sel_inwin, hist_pos, hist_count);
         break;
     case AppStateTextReceived:
-        draw_text_received(canvas, text_copy, text_len);
+        draw_text_received(canvas, text_copy, preview_offset, delay);
         break;
     case AppStateWaitingUSB:
         draw_waiting_usb(canvas, usb_detected);
         break;
     case AppStateSending:
-        draw_sending(canvas);
+        draw_sending(canvas, progress, text_len);
         break;
     case AppStateDone:
         draw_done(canvas);
@@ -343,6 +342,20 @@ void ttf_view_draw_callback(Canvas* canvas, void* context) {
         break;
     default:
         break;
+    }
+    // Always show independent link states, including while previewing/sending.
+    canvas_set_color(canvas, ColorWhite);
+    canvas_draw_box(canvas, 0, 0, SCREEN_W, HEADER_H);
+    canvas_set_color(canvas, ColorBlack);
+    canvas_set_font(canvas, FontSecondary);
+    char links[32];
+    snprintf(links, sizeof(links), "BT:%s  USB:%s", bt_connected ? "ON" : "OFF",
+        usb_connected ? "Ready" : "OFF");
+    canvas_draw_str(canvas, 2, 10, links);
+    if(state == AppStateConnected || state == AppStateWaitingBT) {
+        char speed[24];
+        snprintf(speed, sizeof(speed), "R:%lums", (unsigned long)delay);
+        draw_footer(canvas, "L:Kbd", speed);
     }
 }
 

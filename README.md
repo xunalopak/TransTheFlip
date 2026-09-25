@@ -1,5 +1,8 @@
 # TransTheFlip — BLE Remote Bad USB
 
+> Update the PC client and Flipper application together: transfers now require the
+> TTF1 length/CRC protocol. See [upgrade instructions and features (French)](UPGRADE.fr.md).
+
 > 📖 Version française : [README.fr.md](README.fr.md)
 
 Send text from a master PC to a Flipper Zero over Bluetooth LE.

@@ -21,11 +21,12 @@
 #include <furi_hal.h>
 #include <gui/gui.h>
 #include <input/input.h>
+#include <stdatomic.h>
+#include "trans_the_flip_protocol.h"
 
 // ============================================================
 // Constants
 // ============================================================
-#define TTF_TEXT_BUFFER_SIZE  256
 #define TTF_ERROR_MSG_SIZE    64
 #define TTF_EVENT_QUEUE_DEPTH 16
 #define TTF_DONE_AUTO_MS      2000   // ms avant retour automatique à Connected
@@ -58,6 +59,7 @@ typedef enum {
     EventTypeInput,
     EventTypeSendDone,
     EventTypeSendError,
+    EventTypeSendCancelled,
 } AppEventType;
 
 typedef struct {
@@ -88,6 +90,16 @@ typedef struct {
     // Buffer texte reçu (accumulé depuis plusieurs paquets BLE)
     char   received_text[TTF_TEXT_BUFFER_SIZE];
     size_t text_len;
+
+    TtfReceiver receiver;
+    uint32_t rx_tick;
+    atomic_bool rx_overflow;
+    bool bt_connected;
+    bool usb_connected;
+    size_t preview_offset;
+    uint32_t key_delay_ms;
+    size_t send_progress;
+    bool ignore_back_release;
 
     // Message d'erreur
     char error_msg[TTF_ERROR_MSG_SIZE];

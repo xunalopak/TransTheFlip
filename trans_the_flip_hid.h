@@ -56,6 +56,10 @@ void ttf_hid_deinit(void);
  * @return true si envoyé sans erreur.
  */
 bool ttf_hid_send_string(const char* text, size_t len);
+void ttf_hid_prepare(uint32_t delay_ms);
+void ttf_hid_cancel(void);
+bool ttf_hid_cancelled(void);
+size_t ttf_hid_progress(void);
 
 /**
  * @brief Charge un fichier de layout BadUSB (.kl) et l'active.

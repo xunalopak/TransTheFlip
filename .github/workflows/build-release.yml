@@ -50,6 +50,13 @@ jobs:
       - name: Build FAP
         run: ufbt build
 
+      - name: Test transfer protocol and HID sender
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror tests/test_protocol.c -o /tmp/test_protocol
+          /tmp/test_protocol
+          gcc -std=c11 -Wall -Wextra -Werror -Itests/stubs tests/test_hid.c trans_the_flip_hid.c -o /tmp/test_hid
+          /tmp/test_hid
+
       # ── 7. Copier avec le nom incluant la version du tag ─────────────────
       - name: Rename FAP with version
         run: |
@@ -90,30 +97,19 @@ jobs:
           pip install -r requirements.txt pyinstaller
 
       # ── 4. GUI : TransTheFlip-GUI.exe (fenêtré, embarque customtkinter) ──
-      - name: Build GUI executable
-        working-directory: pc_client
-        run: >
-          pyinstaller --onefile --windowed
-          --name TransTheFlip-GUI
-          --collect-all customtkinter
-          --collect-all bleak
-          trans_gui.py
+      - name: Test PC client
+        run: python -m unittest discover -s pc_client
 
       # ── 5. CLI : TransTheFlip-CLI.exe (console) ──────────────────────────
-      - name: Build CLI executable
-        working-directory: pc_client
-        run: >
-          pyinstaller --onefile --console
-          --name TransTheFlip-CLI
-          --collect-all bleak
-          trans_client.py
+      - name: Build Windows executables
+        run: ./pc_client/build_windows.ps1
 
       # ── 6. Publier les exes comme artefacts pour le job de release ───────
       - name: Upload client artifacts
         uses: actions/upload-artifact@v4
         with:
           name: clients
-          path: pc_client/dist/*.exe
+          path: dist/*.exe
 
   # ════════════════════════════════════════════════════════════════════════
   # Job 3 : création de la release GitHub avec tous les assets
@@ -140,4 +136,15 @@ jobs:
             artifacts/TransTheFlip-GUI.exe
             artifacts/TransTheFlip-CLI.exe
           generate_release_notes: true
+          body: |
+            ## Mise à jour PC + Flipper obligatoire
+            Installer le nouveau FAP et le nouveau client ensemble : le protocole TTF1
+            vérifie la longueur et le CRC de chaque texte avant confirmation.
+
+            - PC : dernier Flipper mémorisé, diagnostics Bluetooth, éditeur multiligne,
+              historique de session, suivi du transfert et de la frappe.
+            - Flipper : états Bluetooth/USB séparés, aperçu défilant, progression,
+              arrêt avec Retour et délai de frappe réglable avec Droite.
+            - Limite : 255 octets ASCII, tags compris ; tabulations et retours à la ligne acceptés.
+            - Tests automatisés Python et C ; les scénarios matériels restent à vérifier sur votre configuration.
           fail_on_unmatched_files: true

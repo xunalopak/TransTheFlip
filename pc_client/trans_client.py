@@ -33,6 +33,7 @@ Usage:
 import asyncio
 import sys
 from typing import Optional
+from protocol import NotificationLines, STATUS_TEXT, write_text, bluetooth_diagnostic
 
 try:
     from bleak import BleakScanner, BleakClient
@@ -66,25 +67,16 @@ SCAN_TIMEOUT = 12.0
 # Notification handler (Flipper → PC status messages)
 # ============================================================
 _last_status: str = ""
+_notifications = NotificationLines()
+_status_queue = None
 
 def _notification_handler(characteristic: BleakGATTCharacteristic, data: bytearray) -> None:
     global _last_status
-    msg = data.decode("utf-8", errors="replace").strip()
-    # The Flipper only ever sends meaningful status tokens (RECV/OK/ERR/CANCEL).
-    # Empty notifications come from the BLE serial profile's flow-control /
-    # keep-alive traffic — drop them so they don't spam blank "Flipper:" lines.
-    if not msg:
-        return
-    _last_status = msg
-    status_map = {
-        "OK":     "✅  Flipper: text sent successfully",
-        "ERR":    "❌  Flipper: HID send error",
-        "CANCEL": "🚫  Flipper: send cancelled by user",
-        "RECV":   "📥  Flipper: text received, waiting for confirmation...",
-    }
-    display = status_map.get(msg, f"📡  Flipper: {msg}")
-    print(f"\r{display}")
-    print("> ", end="", flush=True)
+    for msg in _notifications.feed(data):
+        _last_status = msg
+        if _status_queue is not None:
+            _status_queue.put_nowait(msg)
+        print(STATUS_TEXT.get(msg, f"Flipper: {msg}"))
 
 
 # ============================================================
@@ -155,28 +147,17 @@ async def scan_for_flipper() -> Optional[BLEDevice]:
 # Send text (chunked if > BLE_CHUNK_SIZE)
 # ============================================================
 async def send_text(client: BleakClient, text: str) -> None:
-    """Send text + '\\n' to the Flipper, split into BLE chunks."""
-    payload = (text + "\n").encode("utf-8")
-    total = len(payload)
-    sent = 0
-
-    while sent < total:
-        chunk = payload[sent : sent + BLE_CHUNK_SIZE]
-        # Write WITH response: the Flipper RX characteristic requires authentication.
-        # Without response, a security rejection is silent (fire-and-forget).
-        # With response, bleak raises an exception if the write fails.
-        await client.write_gatt_char(NUS_RX_CHAR_UUID, chunk, response=True)
-        sent += len(chunk)
-        if sent < total:
-            await asyncio.sleep(0.05)  # Small delay between chunks
-
-    print(f"📤  Sent ({total} bytes). Confirm on the Flipper (OK button).")
+    """Send a complete CRC-checked frame; never split multiline text into commands."""
+    await write_text(client, text)
 
 
 # ============================================================
 # Interactive loop
 # ============================================================
 async def interactive_loop(client: BleakClient) -> None:
+    global _status_queue, _notifications
+    _status_queue = asyncio.Queue()
+    _notifications = NotificationLines()
     print("\n" + "="*55)
     print("  TransTheFlip Client — Flipper Zero BLE Remote HID")
     print("="*55)
@@ -188,6 +169,13 @@ async def interactive_loop(client: BleakClient) -> None:
     print("="*55 + "\n")
 
     await client.start_notify(NUS_TX_CHAR_UUID, _notification_handler)
+    await client.write_gatt_char(NUS_RX_CHAR_UUID, b"TTF?\n", response=True)
+    try:
+        ready = await asyncio.wait_for(_status_queue.get(), 5)
+    except asyncio.TimeoutError:
+        raise RuntimeError("Installez et ouvrez la nouvelle application Flipper (protocole TTF1).") from None
+    if ready != "READY:1:255":
+        raise RuntimeError("Flipper occupé ou incompatible : " + ready)
 
     while True:
         try:
@@ -219,7 +207,28 @@ async def interactive_loop(client: BleakClient) -> None:
 """)
             continue
 
-        await send_text(client, text)
+        try:
+            await send_text(client, text)
+        except ValueError as exc:
+            print(exc)
+            continue
+        # Do not send another frame until local confirmation and typing finish.
+        received = False
+        while True:
+            if not client.is_connected:
+                raise RuntimeError("Bluetooth disconnected; result unknown.")
+            try:
+                status = await asyncio.wait_for(_status_queue.get(), 1 if received else 7)
+            except asyncio.TimeoutError:
+                if received:
+                    continue
+                raise RuntimeError("No receipt from Flipper; reconnect before retrying.") from None
+            if status == "RECV":
+                received = True
+            elif status in ("OK", "CANCEL"):
+                break
+            elif status.startswith("ERR"):
+                raise RuntimeError(STATUS_TEXT.get(status, status))
 
 
 # ============================================================
@@ -252,7 +261,7 @@ async def main() -> None:
             await interactive_loop(client)
 
     except Exception as exc:
-        print(f"❌  BLE error: {exc}")
+        print(bluetooth_diagnostic(exc))
         if "not found" in str(exc).lower() or "no such device" in str(exc).lower():
             print("    The device may have turned off or disconnected.")
 

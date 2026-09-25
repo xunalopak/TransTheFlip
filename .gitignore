@@ -4,6 +4,8 @@
 # ufbt build artifacts
 .ufbt/
 dist/
+build/
+*.spec
 
 # Python
 __pycache__/
