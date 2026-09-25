@@ -137,6 +137,11 @@ jobs:
             artifacts/TransTheFlip-CLI.exe
           generate_release_notes: true
           body: |
+            ## Correctif Bluetooth v2.0.1
+            Le client écoute maintenant les réponses série du Flipper sur le bon canal,
+            ce qui corrige le délai d’attente TTF1 suivi d’une déconnexion.
+            Si le FAP v2.0.0 est déjà installé, seul le client PC doit être remplacé.
+
             ## Mise à jour PC + Flipper obligatoire
             Installer le nouveau FAP et le nouveau client ensemble : le protocole TTF1
             vérifie la longueur et le CRC de chaque texte avant confirmation.
