@@ -1,5 +1,11 @@
 # Mise à jour du client PC et du Flipper
 
+**Correctif v2.0.1 :** le client PC écoute maintenant le canal des réponses série
+du Flipper (FE61), et non le contrôle de débit (FE63). Cela corrige la déconnexion
+après le message « ne répond pas au protocole TTF1 ». Si le FAP v2.0.0 est déjà
+installé, seul le client PC doit être remplacé. La connexion a été vérifiée sur Arieda,
+avec Momentum mntm-012, sans envoyer de texte ni de touches USB.
+
 Cette version nécessite **les deux nouvelles applications**. Le transfert utilise
 désormais une longueur et un CRC32 ; les anciennes versions ne sont pas compatibles.
 Le client refuse l'envoi tant que l'application Flipper n'a pas confirmé sa version.

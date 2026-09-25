@@ -29,6 +29,9 @@ class FakeClient:
             self.services = []
 
     async def start_notify(self, uuid, callback):
+        # Independent firmware UUID: using the flow-control channel must fail this test.
+        if uuid != "19ed82ae-ed21-4c9d-4145-228e61fe0000":
+            raise RuntimeError("Subscribed to flow control instead of serial TX")
         if self.failure == "notify":
             raise RuntimeError("notification subscription failed")
         self.notify = callback

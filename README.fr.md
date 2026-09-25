@@ -154,7 +154,7 @@ TransTheFlip/
 Le Flipper n'expose **pas** le NUS standard mais son propre service serial :
 - **Service UUID** : `8fe5b3d5-2e7f-4a98-2a48-7acc60fe0000`
 - **RX** (PC→Flipper, Write) : `19ed82ae-ed21-4c9d-4145-228e62fe0000`
-- **TX** (Flipper→PC, Notify) : `19ed82ae-ed21-4c9d-4145-228e63fe0000`
+- **TX** (Flipper→PC, Indicate) : `19ed82ae-ed21-4c9d-4145-228e61fe0000`
 - Terminateur de message : `\n` (newline)
 - Messages de statut Flipper→PC : `RECV`, `OK`, `ERR`, `CANCEL`
 

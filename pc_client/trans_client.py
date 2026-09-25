@@ -50,7 +50,8 @@ except ImportError:
 # ============================================================
 FLIPPER_SERVICE_UUID = "8fe5b3d5-2e7f-4a98-2a48-7acc60fe0000"
 FLIPPER_RX_CHAR_UUID = "19ed82ae-ed21-4c9d-4145-228e62fe0000"  # PC → Flipper (Write)
-FLIPPER_TX_CHAR_UUID = "19ed82ae-ed21-4c9d-4145-228e63fe0000"  # Flipper → PC (Notify)
+# FE61 carries serial indications; FE63 only reports available receive-buffer space.
+FLIPPER_TX_CHAR_UUID = "19ed82ae-ed21-4c9d-4145-228e61fe0000"  # Flipper → PC (Indicate)
 
 # Aliases for compatibility
 NUS_SERVICE_UUID = FLIPPER_SERVICE_UUID
