@@ -26,12 +26,42 @@
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <stdatomic.h>
 
 // ============================================================
 // Délais entre frappes (ms)
 // ============================================================
 #define TTF_KEY_PRESS_MS   12   // Temps touche enfoncée
 #define TTF_KEY_RELEASE_MS 8    // Délai après relâchement
+
+static atomic_bool s_cancel;
+static atomic_size_t s_progress;
+static uint32_t s_key_delay = TTF_KEY_RELEASE_MS;
+static bool s_failed;
+
+void ttf_hid_prepare(uint32_t delay_ms) {
+    atomic_store(&s_cancel, false);
+    atomic_store(&s_progress, 0);
+    s_key_delay = delay_ms;
+    s_failed = false;
+}
+
+void ttf_hid_cancel(void) { atomic_store(&s_cancel, true); }
+bool ttf_hid_cancelled(void) { return atomic_load(&s_cancel); }
+size_t ttf_hid_progress(void) { return atomic_load(&s_progress); }
+
+static bool send_active(void) {
+    if(!furi_hal_hid_is_connected()) s_failed = true;
+    return !ttf_hid_cancelled() && !s_failed;
+}
+
+static void interruptible_delay(uint32_t ms) {
+    while(ms && send_active()) {
+        uint32_t slice = ms > 10 ? 10 : ms;
+        furi_delay_ms(slice);
+        ms -= slice;
+    }
+}
 
 // ============================================================
 // Config USB sauvegardée pour restauration
@@ -265,14 +295,20 @@ static uint16_t make_hid(uint8_t mod, uint8_t key) {
 
 /** Presse et relâche une touche HID. */
 static void press_and_release(uint16_t hid_key) {
-    furi_hal_hid_kb_press(hid_key);
-    furi_delay_ms(TTF_KEY_PRESS_MS);
-    furi_hal_hid_kb_release(hid_key);
-    furi_delay_ms(TTF_KEY_RELEASE_MS);
+    if(!send_active()) return;
+    if(!furi_hal_hid_kb_press(hid_key)) s_failed = true;
+    interruptible_delay(TTF_KEY_PRESS_MS);
+    if(!furi_hal_hid_kb_release(hid_key)) s_failed = true;
+    interruptible_delay(s_key_delay);
 }
 
 /** Envoie un seul caractère ASCII imprimable via le layout actif. */
 static void send_ascii_char(char c) {
+    if(c == '\n' || c == '\t') {
+        press_and_release(c == '\n' ? HID_KEYBOARD_RETURN : HID_KEYBOARD_TAB);
+        return;
+    }
+    if(c == '\r') return;
     uint8_t idx = (uint8_t)c;
     if(idx < 32 || idx > 126) return; // non imprimable
     uint16_t entry = s_layout[idx];
@@ -369,7 +405,7 @@ static void handle_tag(const char* tag) {
     if(ttf_strn_ieq(tag, "DELAY:", 6)) {
         int ms = atoi(tag + 6);
         if(ms > 0 && ms <= 30000) {
-            furi_delay_ms((uint32_t)ms);
+            interruptible_delay((uint32_t)ms);
         }
         return;
     }
@@ -467,7 +503,7 @@ bool ttf_hid_send_string(const char* text, size_t len) {
     if(!text || len == 0) return false;
 
     size_t i = 0;
-    while(i < len) {
+    while(i < len && send_active()) {
         char c = text[i];
 
         if(c == '[') {
@@ -498,8 +534,9 @@ bool ttf_hid_send_string(const char* text, size_t len) {
             send_ascii_char(c);
             i++;
         }
+        atomic_store(&s_progress, i);
     }
 
     furi_hal_hid_kb_release_all();
-    return true;
+    return send_active();
 }

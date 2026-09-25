@@ -3,6 +3,7 @@ App(
     name="TransTheFlip",
     apptype=FlipperAppType.EXTERNAL,
     entry_point="trans_the_flip_app",
+    sources=["trans_the_flip*.c"],
     requires=["gui"],
     fap_libs=["ble_profile"],
     stack_size=4 * 1024,

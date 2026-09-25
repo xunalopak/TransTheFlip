@@ -31,6 +31,13 @@ class FakeClient:
     async def start_notify(self, uuid, callback):
         if self.failure == "notify":
             raise RuntimeError("notification subscription failed")
+        self.notify = callback
+
+    async def write_gatt_char(self, uuid, data, response):
+        if data == b"TTF?\n":
+            self.notify(None, bytearray(b"READY:1:255\n"))
+        else:
+            self.notify(None, bytearray(b"RECV\n"))
 
     async def disconnect(self):
         self.closed = True
@@ -45,6 +52,7 @@ class BluetoothTests(unittest.IsolatedAsyncioTestCase):
         worker._emit = lambda *event: events.append(event)
         worker._client = None
         worker._connect_task = None
+        worker._send_task = None
         device = object()
         worker._devices = {"address": device}
         with patch.object(gui, "BleakClient", FakeClient):
@@ -87,6 +95,7 @@ class BluetoothTests(unittest.IsolatedAsyncioTestCase):
             _connected=False, _busy=True, connect_btn=Mock(), disconnect_btn=Mock(),
             send_btn=Mock(), scan_btn=Mock(), device_menu=Mock(),
             _set_status=Mock(), _worker=Mock(),
+            _dev_map={}, _pending_text=None,
         )
         gui.App._handle_event(app, "connected", "Flipper")
         self.assertTrue(app._connected)

@@ -27,6 +27,7 @@
 #include <storage/storage.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 // ============================================================
 // Chemins pour le layout clavier
@@ -51,8 +52,9 @@ static int32_t send_thread_fn(void* raw_ctx) {
     bool ok = ttf_hid_send_string(ctx->text, ctx->text_len);
 
     AppEvent ev;
-    ev.type = ok ? EventTypeSendDone : EventTypeSendError;
-    furi_message_queue_put(app->event_queue, &ev, 0);
+    ev.type = ttf_hid_cancelled() ? EventTypeSendCancelled :
+        (ok ? EventTypeSendDone : EventTypeSendError);
+    furi_message_queue_put(app->event_queue, &ev, FuriWaitForever);
 
     free(ctx);
     return 0;
@@ -67,6 +69,8 @@ static TransTheFlipApp* app_alloc(void) {
 
     memset(app, 0, sizeof(TransTheFlipApp));
     app->state = AppStateWaitingBT;
+    app->key_delay_ms = 8;
+    atomic_init(&app->rx_overflow, false);
 
     // Queue d'événements
     app->event_queue = furi_message_queue_alloc(TTF_EVENT_QUEUE_DEPTH, sizeof(AppEvent));
@@ -109,6 +113,9 @@ static void app_free(TransTheFlipApp* app) {
 // Déclenchement de l'envoi dans un thread séparé
 // ============================================================
 static void start_send(TransTheFlipApp* app) {
+    if(app->send_thread) return;
+    ttf_hid_prepare(app->key_delay_ms);
+    app->send_progress = 0;
     // Allouer le contexte du thread (il sera libéré dans send_thread_fn)
     SendThreadCtx* ctx = malloc(sizeof(SendThreadCtx));
     if(!ctx) {
@@ -117,6 +124,7 @@ static void start_send(TransTheFlipApp* app) {
         app->state = AppStateError;
         furi_mutex_release(app->mutex);
         view_port_update(app->view_port);
+        ttf_bt_send_status("ERR:MEMORY\n");
         return;
     }
 
@@ -127,10 +135,11 @@ static void start_send(TransTheFlipApp* app) {
 
     app->send_thread = furi_thread_alloc();
     furi_thread_set_name(app->send_thread, "TTF_Send");
-    furi_thread_set_stack_size(app->send_thread, 1024);
+    furi_thread_set_stack_size(app->send_thread, 2048);
     furi_thread_set_context(app->send_thread, ctx);
     furi_thread_set_callback(app->send_thread, send_thread_fn);
     furi_thread_start(app->send_thread);
+    ttf_bt_send_status("SENDING\n");
 }
 
 // ============================================================
@@ -232,6 +241,24 @@ static void open_layout_picker(TransTheFlipApp* app) {
 static void reset_text_buffer(TransTheFlipApp* app) {
     memset(app->received_text, 0, TTF_TEXT_BUFFER_SIZE);
     app->text_len = 0;
+    app->preview_offset = 0;
+    ttf_rx_reset(&app->receiver);
+    app->rx_tick = 0;
+}
+
+static AppState idle_state(TransTheFlipApp* app) {
+    return app->bt_connected ? AppStateConnected : AppStateWaitingBT;
+}
+
+static void receive_error(TransTheFlipApp* app, const char* message, const char* status) {
+    ttf_rx_reset(&app->receiver);
+    app->rx_tick = 0;
+    if(!app->send_thread) {
+        reset_text_buffer(app);
+        app->state = AppStateError;
+        snprintf(app->error_msg, sizeof(app->error_msg), "%s", message);
+    }
+    ttf_bt_send_status(status);
 }
 
 // ============================================================
@@ -308,8 +335,10 @@ int32_t trans_the_flip_app(void* p) {
 
             // --------------------------------------------------
             case EventTypeBtConnect:
-                if(app->state == AppStateWaitingBT) {
+                app->bt_connected = true;
+                if(app->state == AppStateWaitingBT || app->state == AppStateDone) {
                     app->state = AppStateConnected;
+                    app->done_tick = 0;
                 }
                 // Réappliquer RPC-off + flow control à chaque connexion
                 // (le firmware Momentum peut les réinitialiser sur reconnexion)
@@ -320,21 +349,23 @@ int32_t trans_the_flip_app(void* p) {
 
             // --------------------------------------------------
             case EventTypeBtDisconnect:
-                // Retour à l'écran d'attente quelle que soit l'étape
-                if(app->state != AppStateError) {
+                app->bt_connected = false;
+                ttf_hid_cancel();
+                if(!app->send_thread) {
                     app->state = AppStateWaitingBT;
+                    reset_text_buffer(app);
                 }
-                // Annuler un éventuel envoi en cours (le thread finira tout seul)
-                reset_text_buffer(app);
                 break;
 
             // --------------------------------------------------
             case EventTypeBtData:
+                app->bt_connected = true;
                 // Si on reçoit des données alors qu'on est encore en WaitingBT,
                 // c'est que la connexion BLE est établie mais le callback de
                 // statut n'a pas déclenché → on auto-transition vers Connected.
-                if(app->state == AppStateWaitingBT) {
+                if(app->state == AppStateWaitingBT || app->state == AppStateDone) {
                     app->state = AppStateConnected;
+                    app->done_tick = 0;
                 }
                 // Signaler au serial service que notre buffer est libéré.
                 // DOIT être fait depuis ce thread (pas depuis serial_data_callback
@@ -342,33 +373,53 @@ int32_t trans_the_flip_app(void* p) {
                 furi_mutex_release(app->mutex);
                 ttf_bt_notify_ready();
                 furi_mutex_acquire(app->mutex, FuriWaitForever);
-                // Accumulation des chunks BLE jusqu'à '\n'
-                if(app->state == AppStateConnected) {
-                    for(size_t i = 0; i < ev.text_len; i++) {
-                        char c = ev.text[i];
-
-                        if(c == '\n' || c == '\0') {
-                            // Terminateur → texte complet reçu
-                            app->received_text[app->text_len] = '\0';
-                            if(app->text_len > 0) {
-                                app->state = AppStateTextReceived;
-                                // Feedback immédiat au PC
-                                ttf_bt_send_status("RECV\n");
-                            }
-                            // Ne pas appeler reset_text_buffer ici :
-                            // on garde le texte pour affichage et envoi.
+                if(app->state != AppStateConnected) {
+                    ttf_bt_send_status("ERR:BUSY\n");
+                    break;
+                }
+                for(size_t i = 0; i < ev.text_len; i++) {
+                    app->rx_tick = furi_get_tick();
+                    TtfRxResult result = ttf_rx_feed(&app->receiver, (uint8_t)ev.text[i]);
+                    if(result == TtfRxHello) {
+                        app->rx_tick = 0;
+                        ttf_bt_send_status("READY:1:255\n");
+                    } else if(result == TtfRxComplete) {
+                        if(i + 1 != ev.text_len) {
+                            receive_error(app, "Extra data rejected", "ERR:PROTOCOL\n");
                             break;
-                        } else if(c != '\r') {
-                            if(app->text_len < TTF_TEXT_BUFFER_SIZE - 1) {
-                                app->received_text[app->text_len++] = c;
-                            }
                         }
+                        app->text_len = app->receiver.length;
+                        memcpy(app->received_text, app->receiver.text, app->text_len + 1);
+                        app->preview_offset = 0;
+                        app->state = AppStateTextReceived;
+                        app->rx_tick = 0;
+                        ttf_rx_reset(&app->receiver);
+                        ttf_bt_send_status("RECV\n");
+                    } else if(result != TtfRxMore) {
+                        receive_error(app,
+                            result == TtfRxTooLong ? "Text too long" :
+                            result == TtfRxChecksum ? "Incomplete/corrupt text" :
+                            result == TtfRxUnsupported ? "Unsupported character" : "Invalid protocol",
+                            result == TtfRxTooLong ? "ERR:LENGTH\n" :
+                            result == TtfRxChecksum ? "ERR:CHECKSUM\n" :
+                            result == TtfRxUnsupported ? "ERR:CHAR\n" : "ERR:PROTOCOL\n");
+                        break;
                     }
                 }
                 break;
 
             // --------------------------------------------------
             case EventTypeInput:
+                if(ev.input.key == InputKeyBack && ev.input.type == InputTypePress &&
+                   app->state == AppStateSending) {
+                    ttf_hid_cancel();
+                    app->ignore_back_release = true;
+                }
+                if(ev.input.key == InputKeyBack && app->ignore_back_release &&
+                   (ev.input.type == InputTypeShort || ev.input.type == InputTypeLong)) {
+                    app->ignore_back_release = false;
+                    break;
+                }
                 if(ev.input.type == InputTypeShort || ev.input.type == InputTypeLong) {
                     switch(ev.input.key) {
 
@@ -381,6 +432,7 @@ int32_t trans_the_flip_app(void* p) {
                                         TTF_TEXT_BUFFER_SIZE - 1);
                                 app->received_text[TTF_TEXT_BUFFER_SIZE - 1] = '\0';
                                 app->text_len = strlen(app->received_text);
+                                app->preview_offset = 0;
                                 app->state    = AppStateTextReceived;
                             }
                         } else if(app->state == AppStateTextReceived) {
@@ -395,16 +447,20 @@ int32_t trans_the_flip_app(void* p) {
                                 // USB non connecté : attendre le branchement
                                 app->state           = AppStateWaitingUSB;
                                 app->usb_detect_tick = 0;
+                                ttf_bt_send_status("WAIT_USB\n");
                             }
                         } else if(app->state == AppStateError) {
                             // OK depuis l'écran d'erreur → retour
-                            app->state = AppStateWaitingBT;
+                            reset_text_buffer(app);
+                            app->state = idle_state(app);
                             strncpy(app->error_msg, "", 1);
                         }
                         break;
 
                     case InputKeyUp:
-                        if(app->state == AppStateHistory) {
+                        if(app->state == AppStateTextReceived) {
+                            if(app->preview_offset >= 21) app->preview_offset -= 21;
+                        } else if(app->state == AppStateHistory) {
                             // Naviguer vers l'entrée plus récente
                             if(app->history_sel > 0) app->history_sel--;
                         } else if(app->state == AppStateWaitingBT ||
@@ -419,11 +475,24 @@ int32_t trans_the_flip_app(void* p) {
                         break;
 
                     case InputKeyDown:
-                        if(app->state == AppStateHistory) {
+                        if(app->state == AppStateTextReceived) {
+                            if(app->preview_offset + 63 < ttf_preview(app->received_text, 0, NULL, 0))
+                                app->preview_offset += 21;
+                        } else if(app->state == AppStateHistory) {
                             // Naviguer vers l'entrée plus ancienne
                             if(app->history_sel + 1 < app->history_count) {
                                 app->history_sel++;
                             }
+                        }
+                        break;
+
+                    case InputKeyRight:
+                        if(app->state == AppStateWaitingBT || app->state == AppStateConnected ||
+                           app->state == AppStateTextReceived) {
+                            const uint32_t speeds[] = {8, 25, 50, 100, 250};
+                            size_t index = 0;
+                            while(index < 5 && speeds[index] != app->key_delay_ms) index++;
+                            app->key_delay_ms = speeds[(index + 1) % 5];
                         }
                         break;
 
@@ -440,28 +509,27 @@ int32_t trans_the_flip_app(void* p) {
                         switch(app->state) {
                         case AppStateTextReceived:
                             // Annuler → retour à Connected
-                            app->state = AppStateConnected;
+                            app->state = idle_state(app);
                             reset_text_buffer(app);
                             ttf_bt_send_status("CANCEL\n");
                             break;
                         case AppStateWaitingUSB:
                             // Annuler l'attente USB → retour à Connected
-                            app->state           = AppStateConnected;
+                            app->state           = idle_state(app);
                             app->usb_detect_tick = 0;
                             reset_text_buffer(app);
                             ttf_bt_send_status("CANCEL\n");
                             break;
                         case AppStateSending:
-                            // Envoi en cours : ne pas interrompre le thread HID
-                            // (interrompre en plein milieu laisserait des touches enfoncées)
-                            // On ignore le Back — l'écran affiche "Do not unplug USB"
+                            ttf_hid_cancel();
                             break;
                         case AppStateError:
-                            app->state = AppStateWaitingBT;
+                            reset_text_buffer(app);
+                            app->state = idle_state(app);
                             break;
                         case AppStateDone:
                             // Retour anticipé
-                            app->state = AppStateConnected;
+                            app->state = idle_state(app);
                             reset_text_buffer(app);
                             app->done_tick = 0;
                             break;
@@ -502,15 +570,16 @@ int32_t trans_the_flip_app(void* p) {
 
             // --------------------------------------------------
             case EventTypeSendError:
+            case EventTypeSendCancelled:
                 if(app->send_thread) {
                     furi_thread_join(app->send_thread);
                     furi_thread_free(app->send_thread);
                     app->send_thread = NULL;
                 }
-                app->state = AppStateError;
-                strncpy(app->error_msg, "HID send failed", TTF_ERROR_MSG_SIZE - 1);
+                app->state = ev.type == EventTypeSendCancelled ? idle_state(app) : AppStateError;
+                strncpy(app->error_msg, "USB lost / HID failed", TTF_ERROR_MSG_SIZE - 1);
                 reset_text_buffer(app);
-                ttf_bt_send_status("ERR\n");
+                ttf_bt_send_status(ev.type == EventTypeSendCancelled ? "CANCEL\n" : "ERR:HID\n");
                 break;
 
             default:
@@ -520,15 +589,44 @@ int32_t trans_the_flip_app(void* p) {
             furi_mutex_release(app->mutex);
             view_port_update(app->view_port);
 
-        } else if(status == FuriStatusErrorTimeout) {
+        }
+        {
             // Timeout 100 ms : transitions automatiques
             furi_mutex_acquire(app->mutex, FuriWaitForever);
             bool need_update = false;
+            bool usb = furi_hal_hid_is_connected();
+            if(usb != app->usb_connected) {
+                app->usb_connected = usb;
+                need_update = true;
+            }
+            if(atomic_exchange(&app->rx_overflow, false)) {
+                receive_error(app, "BLE data lost", "ERR:OVERFLOW\n");
+                furi_mutex_release(app->mutex);
+                ttf_bt_notify_ready();
+                furi_mutex_acquire(app->mutex, FuriWaitForever);
+                need_update = true;
+            }
+            if((app->receiver.header_len || app->receiver.expected) &&
+               furi_get_tick() - app->rx_tick >= TTF_RX_TIMEOUT_MS) {
+                receive_error(app, "Transfer incomplete", "ERR:TIMEOUT\n");
+                need_update = true;
+            }
+            if(app->state == AppStateSending) {
+                size_t progress = ttf_hid_progress();
+                if(progress != app->send_progress) {
+                    app->send_progress = progress;
+                    char message[32];
+                    snprintf(message, sizeof(message), "PROGRESS:%u\n",
+                        (unsigned)(app->text_len ? progress * 100 / app->text_len : 0));
+                    ttf_bt_send_status(message);
+                    need_update = true;
+                }
+            }
 
             // Retour auto depuis AppStateDone
             if(app->state == AppStateDone && app->done_tick != 0) {
                 if(furi_get_tick() - app->done_tick > TTF_DONE_AUTO_MS) {
-                    app->state    = AppStateConnected;
+                    app->state    = idle_state(app);
                     app->done_tick = 0;
                     need_update   = true;
                 }

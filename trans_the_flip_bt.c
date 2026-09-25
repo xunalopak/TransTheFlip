@@ -17,6 +17,7 @@
  */
 #include "trans_the_flip_bt.h"
 #include "trans_the_flip.h"
+#include "trans_the_flip_hid.h"
 
 #include <furi.h>
 #include <bt/bt_service/bt.h>
@@ -48,6 +49,7 @@ static void bt_status_callback(BtStatus status, void* context) {
     case BtStatusAdvertising:
     case BtStatusOff:
     case BtStatusUnavailable:
+        ttf_hid_cancel(); // Stop even if the UI event queue is temporarily full.
         ev.type = EventTypeBtDisconnect;
         furi_message_queue_put(app->event_queue, &ev, 0);
         break;
@@ -70,16 +72,18 @@ static uint16_t serial_data_callback(SerialServiceEvent event, void* context) {
         memset(&ev, 0, sizeof(ev));
         ev.type = EventTypeBtData;
 
-        // Copier les données reçues dans l'événement (tronquer si trop grand)
+        // Reject loss instead of silently making a truncated command executable.
         uint16_t copy_size = event.data.size;
         if(copy_size >= TTF_TEXT_BUFFER_SIZE) {
-            copy_size = TTF_TEXT_BUFFER_SIZE - 1;
+            atomic_store(&app->rx_overflow, true);
+            return event.data.size;
         }
         memcpy(ev.text, event.data.buffer, copy_size);
         ev.text[copy_size] = '\0';
         ev.text_len = copy_size;
 
-        furi_message_queue_put(app->event_queue, &ev, 0);
+        if(furi_message_queue_put(app->event_queue, &ev, 0) != FuriStatusOk)
+            atomic_store(&app->rx_overflow, true);
 
         // NE PAS appeler notify_buffer_is_empty ici !
         // Le firmware tient buff_size_mtx pendant tout l'appel du callback.

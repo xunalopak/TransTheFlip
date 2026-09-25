@@ -2,6 +2,9 @@
 
 > 📖 English version: [README.md](README.md)
 
+> Nouvelle version PC + Flipper : [installation, nouvelles fonctions et tests](UPGRADE.fr.md).
+> Mettre à jour les deux applications ensemble (protocole TTF1).
+
 Envoie du texte depuis un PC maître vers un Flipper Zero via Bluetooth LE.
 Le Flipper le tape automatiquement via USB HID sur le PC cible.
 
