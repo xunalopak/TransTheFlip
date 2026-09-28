@@ -33,7 +33,7 @@ Usage:
 import asyncio
 import sys
 from typing import Optional
-from protocol import NotificationLines, STATUS_TEXT, write_text, bluetooth_diagnostic
+from protocol import NotificationLines, STATUS_TEXT, MAX_TEXT_BYTES, peer_capacity, write_text, bluetooth_diagnostic
 
 try:
     from bleak import BleakScanner, BleakClient
@@ -147,9 +147,9 @@ async def scan_for_flipper() -> Optional[BLEDevice]:
 # ============================================================
 # Send text (chunked if > BLE_CHUNK_SIZE)
 # ============================================================
-async def send_text(client: BleakClient, text: str) -> None:
+async def send_text(client: BleakClient, text: str, max_bytes=MAX_TEXT_BYTES) -> None:
     """Send a complete CRC-checked frame; never split multiline text into commands."""
-    await write_text(client, text)
+    await write_text(client, text, max_bytes=max_bytes)
 
 
 # ============================================================
@@ -175,8 +175,10 @@ async def interactive_loop(client: BleakClient) -> None:
         ready = await asyncio.wait_for(_status_queue.get(), 5)
     except asyncio.TimeoutError:
         raise RuntimeError("Installez et ouvrez la nouvelle application Flipper (protocole TTF1).") from None
-    if ready != "READY:1:255":
+    max_bytes = peer_capacity(ready)
+    if max_bytes is None:
         raise RuntimeError("Flipper occupé ou incompatible : " + ready)
+    print(f"Capacité du Flipper : {max_bytes} octets, tags compris.")
 
     while True:
         try:
@@ -209,7 +211,7 @@ async def interactive_loop(client: BleakClient) -> None:
             continue
 
         try:
-            await send_text(client, text)
+            await send_text(client, text, max_bytes)
         except ValueError as exc:
             print(exc)
             continue

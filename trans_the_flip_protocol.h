@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define TTF_TEXT_BUFFER_SIZE 256
+#define TTF_TEXT_BUFFER_SIZE 4097 // 4096 payload bytes plus the NUL terminator
 #define TTF_RX_TIMEOUT_MS 5000
 
 typedef enum {
@@ -61,7 +61,7 @@ static inline TtfRxResult ttf_rx_feed(TtfReceiver* rx, uint8_t byte) {
         }
         unsigned length = 0, crc = 0;
         int end = 0;
-        if(sscanf(rx->header, "TTF1 %3u %8x%n", &length, &crc, &end) != 2 ||
+        if(sscanf(rx->header, "TTF1 %5u %8x%n", &length, &crc, &end) != 2 ||
            end == 0 || rx->header[end] != '\0' || length == 0)
             return TtfRxProtocol;
         if(length >= TTF_TEXT_BUFFER_SIZE) return TtfRxTooLong;

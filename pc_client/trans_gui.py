@@ -56,7 +56,7 @@ from trans_client import (
     FLIPPER_TX_CHAR_UUID,
     BLE_CHUNK_SIZE,
 )
-from protocol import NotificationLines, STATUS_TEXT, encode_text, write_text, bluetooth_diagnostic
+from protocol import NotificationLines, STATUS_TEXT, MAX_TEXT_BYTES, peer_capacity, encode_text, write_text, bluetooth_diagnostic
 
 SETTINGS_PATH = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "TransTheFlip" / "settings.json"
 
@@ -128,6 +128,7 @@ class BleWorker:
         self._ready = asyncio.Event()
         self._received = asyncio.Event()
         self._receive_error = None
+        self._max_text_bytes = MAX_TEXT_BYTES
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
@@ -300,7 +301,8 @@ class BleWorker:
         self._received.clear()
         self._receive_error = None
         try:
-            await write_text(client, text, lambda value: self._emit("transfer_progress", value))
+            await write_text(client, text, lambda value: self._emit("transfer_progress", value),
+                             max_bytes=self._max_text_bytes)
             await asyncio.wait_for(self._received.wait(), 7.0)
             if self._receive_error:
                 raise RuntimeError(self._receive_error)
@@ -319,7 +321,10 @@ class BleWorker:
     # ---- bleak callbacks (asyncio thread) ----
     def _on_notify(self, _characteristic: BleakGATTCharacteristic, data: bytearray) -> None:
         for msg in self._notifications.feed(data):
-            if msg == "READY:1:255":
+            capacity = peer_capacity(msg)
+            if capacity is not None:
+                self._max_text_bytes = capacity
+                self._emit("capacity", capacity)
                 self._ready.set()
                 continue
             if msg == "RECV":
@@ -367,6 +372,7 @@ class App(ctk.CTk):
         self._connected = False
         self._busy = False
         self._pending_text = None
+        self._max_text_bytes = MAX_TEXT_BYTES
         self._transfer_stage = "idle"
         self._history = []  # Session only: sent commands are never saved to disk.
         self._last_device = load_last_device()
@@ -430,7 +436,7 @@ class App(ctk.CTk):
         )
         self.history_menu.grid(row=1, column=0, columnspan=2, sticky="ew", pady=6)
         self.transfer_label = ctk.CTkLabel(
-            entry_frame, text="255 octets maximum · Entrée : nouvelle ligne · Ctrl+Entrée : envoyer",
+            entry_frame, text=f"Jusqu’à {MAX_TEXT_BYTES} octets · Entrée : nouvelle ligne · Ctrl+Entrée : envoyer",
             wraplength=690, anchor="w",
         )
         self.transfer_label.grid(row=2, column=0, columnspan=2, sticky="ew")
@@ -528,7 +534,7 @@ class App(ctk.CTk):
             self._log("❌  Not connected.")
             return "break"
         try:
-            encode_text(text)
+            encode_text(text, self._max_text_bytes)
         except ValueError as exc:
             self.transfer_label.configure(text=str(exc))
             return "break"
@@ -565,6 +571,13 @@ class App(ctk.CTk):
                     self._set_status("● Disconnected", "#e05555")
         elif kind == "devices":
             self._populate_devices(payload)  # type: ignore[arg-type]
+        elif kind == "capacity":
+            self._max_text_bytes = int(payload)
+            message = f"Capacité du Flipper : {payload} octets, tags compris."
+            if self._max_text_bytes < MAX_TEXT_BYTES:
+                message += f" Mettez le FAP à jour pour passer à {MAX_TEXT_BYTES} octets."
+            self.transfer_label.configure(text=message)
+            self._log(message)
         elif kind == "connected":
             self._connected = True
             self._busy = False

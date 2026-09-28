@@ -1,5 +1,6 @@
 // Compile the production sender with a fake USB device; no keystrokes reach a PC.
 #include "../trans_the_flip_hid.h"
+#include "../trans_the_flip_protocol.h"
 #include "stubs/furi_hal.h"
 #include "stubs/storage/storage.h"
 #include <assert.h>
@@ -60,6 +61,13 @@ int main(void) {
     reset(100);
     assert(ttf_hid_send_string("ab", 2));
     assert(elapsed == 224);
+    char long_text[TTF_TEXT_BUFFER_SIZE];
+    memset(long_text, 'x', sizeof(long_text) - 1);
+    long_text[sizeof(long_text) - 1] = '\0';
+    reset(8);
+    assert(ttf_hid_send_string(long_text, sizeof(long_text) - 1));
+    assert(presses == 4096 && releases == 4096 && release_all == 1);
+    assert(ttf_hid_progress() == 4096);
     reset(8);
     cancel_after = 30;
     const char* text = "a[DELAY:30000]b";
@@ -77,6 +85,6 @@ int main(void) {
     fail_press = true;
     assert(!ttf_hid_send_string("ab", 2));
     assert(presses == 1 && releases == 1 && release_all == 1);
-    puts("HID multiline/speed/progress/cancellation/USB failure checks passed");
+    puts("HID 4096-byte/multiline/speed/progress/cancellation/USB failure checks passed");
     return 0;
 }

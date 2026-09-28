@@ -34,6 +34,8 @@
 #define TTF_LAYOUT_PATH_SIZE  128    // longueur max du chemin vers le fichier .kl
 #define TTF_USB_CONNECT_DELAY_MS 1500 // délai après détection USB avant envoi
 #define TTF_HISTORY_MAX       10     // nombre max d'entrées dans l'historique (RAM)
+#define TTF_HISTORY_BYTES     (2 * TTF_TEXT_BUFFER_SIZE)
+#define TTF_BT_EVENT_SIZE     256    // A BLE chunk, not a complete text
 
 // ============================================================
 // Machine d'états
@@ -65,7 +67,7 @@ typedef enum {
 typedef struct {
     AppEventType type;
     InputEvent   input;                   // valide si type == EventTypeInput
-    char         text[TTF_TEXT_BUFFER_SIZE]; // valide si type == EventTypeBtData
+    char         text[TTF_BT_EVENT_SIZE]; // valide si type == EventTypeBtData
     size_t       text_len;
 } AppEvent;
 
@@ -115,7 +117,8 @@ typedef struct {
     uint32_t usb_detect_tick;
 
     // Historique des textes envoyés (RAM uniquement — effacé à la fermeture de l'app)
-    char     history[TTF_HISTORY_MAX][TTF_TEXT_BUFFER_SIZE];
+    char*    history[TTF_HISTORY_MAX];
+    size_t   history_bytes;
     size_t   history_count;        // nombre d'entrées valides (0..TTF_HISTORY_MAX)
     size_t   history_sel;          // index sélectionné dans la vue historique
     AppState history_return_state; // état vers lequel revenir en quittant l'historique

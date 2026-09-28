@@ -9,6 +9,7 @@ import trans_gui as gui
 
 class FakeClient:
     failure = None
+    capacity = 4096
     instances = []
 
     def __init__(self, device, **options):
@@ -38,7 +39,7 @@ class FakeClient:
 
     async def write_gatt_char(self, uuid, data, response):
         if data == b"TTF?\n":
-            self.notify(None, bytearray(b"READY:1:255\n"))
+            self.notify(None, bytearray(f"READY:1:{self.capacity}\n".encode()))
         else:
             self.notify(None, bytearray(b"RECV\n"))
 
@@ -73,6 +74,7 @@ class BluetoothTests(unittest.IsolatedAsyncioTestCase):
                     self.assertNotIn(("connected", "Flipper"), events)
                 else:
                     self.assertIn(("connected", "Flipper"), events)
+                    self.assertIn(("capacity", 4096), events)
                     # A late callback from a previous connection must not clear this one.
                     worker._on_disconnected(FakeClient.instances[-2])
                     self.assertIs(worker._client, client)
@@ -92,6 +94,13 @@ class BluetoothTests(unittest.IsolatedAsyncioTestCase):
             await worker._connect("address", "Flipper")
             self.assertIsNotNone(worker._client)
             await worker._disconnect()
+            FakeClient.capacity = 255
+            try:
+                await worker._connect("address", "Old Flipper")
+                self.assertEqual(worker._max_text_bytes, 255)
+                await worker._disconnect()
+            finally:
+                FakeClient.capacity = 4096
 
     async def test_gui_disconnect_states(self):
         app = SimpleNamespace(

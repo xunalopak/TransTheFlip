@@ -39,24 +39,17 @@
 // ============================================================
 // Thread d'envoi HID (séparé pour ne pas bloquer l'UI)
 // ============================================================
-typedef struct {
-    TransTheFlipApp* app;
-    char             text[TTF_TEXT_BUFFER_SIZE];
-    size_t           text_len;
-} SendThreadCtx;
-
 static int32_t send_thread_fn(void* raw_ctx) {
-    SendThreadCtx* ctx = (SendThreadCtx*)raw_ctx;
-    TransTheFlipApp* app = ctx->app;
+    TransTheFlipApp* app = raw_ctx;
 
-    bool ok = ttf_hid_send_string(ctx->text, ctx->text_len);
+    // The event loop leaves received_text untouched until this thread is joined.
+    bool ok = ttf_hid_send_string(app->received_text, app->text_len);
 
     AppEvent ev;
     ev.type = ttf_hid_cancelled() ? EventTypeSendCancelled :
         (ok ? EventTypeSendDone : EventTypeSendError);
     furi_message_queue_put(app->event_queue, &ev, FuriWaitForever);
 
-    free(ctx);
     return 0;
 }
 
@@ -106,6 +99,8 @@ static void app_free(TransTheFlipApp* app) {
     furi_mutex_free(app->mutex);
     furi_message_queue_free(app->event_queue);
 
+    for(size_t i = 0; i < app->history_count; i++) free(app->history[i]);
+
     free(app);
 }
 
@@ -116,27 +111,10 @@ static void start_send(TransTheFlipApp* app) {
     if(app->send_thread) return;
     ttf_hid_prepare(app->key_delay_ms);
     app->send_progress = 0;
-    // Allouer le contexte du thread (il sera libéré dans send_thread_fn)
-    SendThreadCtx* ctx = malloc(sizeof(SendThreadCtx));
-    if(!ctx) {
-        furi_mutex_acquire(app->mutex, FuriWaitForever);
-        strncpy(app->error_msg, "Out of memory", TTF_ERROR_MSG_SIZE - 1);
-        app->state = AppStateError;
-        furi_mutex_release(app->mutex);
-        view_port_update(app->view_port);
-        ttf_bt_send_status("ERR:MEMORY\n");
-        return;
-    }
-
-    ctx->app = app;
-    strncpy(ctx->text, app->received_text, TTF_TEXT_BUFFER_SIZE - 1);
-    ctx->text[TTF_TEXT_BUFFER_SIZE - 1] = '\0';
-    ctx->text_len = app->text_len;
-
     app->send_thread = furi_thread_alloc();
     furi_thread_set_name(app->send_thread, "TTF_Send");
     furi_thread_set_stack_size(app->send_thread, 2048);
-    furi_thread_set_context(app->send_thread, ctx);
+    furi_thread_set_context(app->send_thread, app);
     furi_thread_set_callback(app->send_thread, send_thread_fn);
     furi_thread_start(app->send_thread);
     ttf_bt_send_status("SENDING\n");
@@ -267,7 +245,7 @@ static void receive_error(TransTheFlipApp* app, const char* message, const char*
 // (jamais persisté sur la carte SD). Appel sous mutex.
 // ============================================================
 static void history_push(TransTheFlipApp* app, const char* text, size_t len) {
-    if(len == 0 || !text || !text[0]) return;
+    if(len == 0 || len >= TTF_TEXT_BUFFER_SIZE || !text || !text[0]) return;
 
     // Éviter un doublon consécutif (même texte que la dernière entrée)
     if(app->history_count > 0 &&
@@ -275,19 +253,20 @@ static void history_push(TransTheFlipApp* app, const char* text, size_t len) {
         return;
     }
 
-    // Décaler les entrées existantes vers le bas pour libérer l'index 0
-    int last = (app->history_count < TTF_HISTORY_MAX) ? (int)app->history_count
-                                                      : TTF_HISTORY_MAX - 1;
-    for(int i = last; i > 0; i--) {
-        memcpy(app->history[i], app->history[i - 1], TTF_TEXT_BUFFER_SIZE);
+    char* copy = malloc(len + 1);
+    if(!copy) return; // Keep the existing history if memory is unavailable.
+    memcpy(copy, text, len);
+    copy[len] = '\0';
+    while(app->history_count && (app->history_count == TTF_HISTORY_MAX ||
+          app->history_bytes + len + 1 > TTF_HISTORY_BYTES)) {
+        size_t last = --app->history_count;
+        app->history_bytes -= strlen(app->history[last]) + 1;
+        free(app->history[last]);
     }
-
-    strncpy(app->history[0], text, TTF_TEXT_BUFFER_SIZE - 1);
-    app->history[0][TTF_TEXT_BUFFER_SIZE - 1] = '\0';
-
-    if(app->history_count < TTF_HISTORY_MAX) {
-        app->history_count++;
-    }
+    memmove(app->history + 1, app->history, app->history_count * sizeof(app->history[0]));
+    app->history[0] = copy;
+    app->history_count++;
+    app->history_bytes += len + 1;
 }
 
 // ============================================================
@@ -382,7 +361,9 @@ int32_t trans_the_flip_app(void* p) {
                     TtfRxResult result = ttf_rx_feed(&app->receiver, (uint8_t)ev.text[i]);
                     if(result == TtfRxHello) {
                         app->rx_tick = 0;
-                        ttf_bt_send_status("READY:1:255\n");
+                        char ready[32];
+                        snprintf(ready, sizeof(ready), "READY:1:%u\n", TTF_TEXT_BUFFER_SIZE - 1);
+                        ttf_bt_send_status(ready);
                     } else if(result == TtfRxComplete) {
                         if(i + 1 != ev.text_len) {
                             receive_error(app, "Extra data rejected", "ERR:PROTOCOL\n");

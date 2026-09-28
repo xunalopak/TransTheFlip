@@ -137,10 +137,12 @@ jobs:
             artifacts/TransTheFlip-CLI.exe
           generate_release_notes: true
           body: |
-            ## Correctif d’affichage Flipper v2.0.2
-            Les commandes du bas ne sont plus superposées. L’historique affiche trois
-            lignes sans recouvrir le pied d’écran, et Up:Log ne recouvre plus le message central.
-            Remplacer le FAP ; le client PC v2.0.1 reste compatible.
+            ## Textes longs v2.1.0
+            Jusqu’à 4 096 octets ASCII par envoi, tags compris.
+            Mettre à jour le FAP et le client PC pour profiter de la nouvelle capacité.
+            Le nouveau client reste compatible avec les FAP v2.0.x, limités à 255 octets.
+            L’historique Flipper reste borné en mémoire : jusqu’à 10 textes ou environ 8 Kio.
+            Les correctifs de connexion Bluetooth et d’affichage v2.0.1/v2.0.2 sont inclus.
 
             ## Depuis une version 1.x : mise à jour PC + Flipper obligatoire
             Installer le nouveau FAP et le nouveau client ensemble : le protocole TTF1
@@ -150,6 +152,6 @@ jobs:
               historique de session, suivi du transfert et de la frappe.
             - Flipper : états Bluetooth/USB séparés, aperçu défilant, progression,
               arrêt avec Retour et délai de frappe réglable avec Droite.
-            - Limite : 255 octets ASCII, tags compris ; tabulations et retours à la ligne acceptés.
+            - Limite : 4 096 octets ASCII, tags compris ; tabulations et retours à la ligne acceptés.
             - Tests automatisés Python et C ; les scénarios matériels restent à vérifier sur votre configuration.
           fail_on_unmatched_files: true

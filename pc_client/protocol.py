@@ -1,9 +1,10 @@
 """Framed transfers shared by GUI and CLI; requires the matching Flipper app."""
 import asyncio
 import zlib
+import re
 
 RX_UUID = "19ed82ae-ed21-4c9d-4145-228e62fe0000"
-MAX_TEXT_BYTES = 255
+MAX_TEXT_BYTES = 4096
 CHUNK_SIZE = 20
 
 STATUS_TEXT = {
@@ -13,7 +14,7 @@ STATUS_TEXT = {
     "OK": "Terminé : frappe confirmée par le Flipper.",
     "CANCEL": "Annulé sur le Flipper. Le texte est conservé.",
     "ERR:HID": "Échec de frappe : vérifiez la connexion USB au PC cible.",
-    "ERR:LENGTH": "Texte trop long : maximum 255 octets, tags compris.",
+    "ERR:LENGTH": "Le texte dépasse la capacité annoncée par le Flipper, tags compris.",
     "ERR:CHECKSUM": "Transfert corrompu ou incomplet : reconnectez-vous avant de réessayer.",
     "ERR:TIMEOUT": "Transfert incomplet : reconnectez-vous avant de réessayer.",
     "ERR:OVERFLOW": "Données Bluetooth perdues : reconnectez-vous avant de réessayer.",
@@ -41,20 +42,29 @@ class NotificationLines:
         return lines
 
 
-def encode_text(text):
+def peer_capacity(message):
+    """Read the firmware limit; retain compatibility with 255-byte Flipper apps."""
+    match = re.fullmatch(r"READY:1:([1-9][0-9]{0,4})", message)
+    if match and int(match[1]) <= 65535:
+        return min(int(match[1]), MAX_TEXT_BYTES)
+    return None
+
+
+def encode_text(text, max_bytes=MAX_TEXT_BYTES):
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     if not text:
         raise ValueError("Le texte est vide.")
     if any(ord(c) > 126 or (ord(c) < 32 and c not in "\n\t") for c in text):
         raise ValueError("Caractère non pris en charge : utilisez du texte ASCII, des tabulations et des retours à la ligne.")
     payload = text.encode("ascii")
-    if len(payload) > MAX_TEXT_BYTES:
-        raise ValueError(f"Texte trop long : {len(payload)} octets, maximum {MAX_TEXT_BYTES} (tags compris).")
+    limit = min(max_bytes, MAX_TEXT_BYTES)
+    if len(payload) > limit:
+        raise ValueError(f"Texte trop long : {len(payload)} octets, maximum {limit} (tags compris).")
     return f"TTF1 {len(payload)} {zlib.crc32(payload):08x}\n".encode("ascii") + payload
 
 
-async def write_text(client, text, progress=lambda value: None):
-    frame = encode_text(text)
+async def write_text(client, text, progress=lambda value: None, max_bytes=MAX_TEXT_BYTES):
+    frame = encode_text(text, max_bytes)
     for offset in range(0, len(frame), CHUNK_SIZE):
         await client.write_gatt_char(RX_UUID, frame[offset:offset + CHUNK_SIZE], response=True)
         progress(min(offset + CHUNK_SIZE, len(frame)) / len(frame))

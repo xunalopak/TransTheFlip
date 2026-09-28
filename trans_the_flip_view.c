@@ -122,12 +122,10 @@ static void draw_connected(Canvas* canvas, const char* layout, size_t history_co
     draw_layout_line(canvas, layout);
 }
 
-static void draw_text_received(Canvas* canvas, const char* text, size_t offset, uint32_t delay) {
+static void draw_text_received(Canvas* canvas, const char* preview, size_t total, size_t offset, uint32_t delay) {
     draw_header(canvas);
 
-    canvas_set_font(canvas, FontSecondary);
-    char preview[64];
-    size_t total = ttf_preview(text, offset, preview, sizeof(preview));
+    canvas_set_font(canvas, FontKeyboard);
     char info[32];
     snprintf(info, sizeof(info), "%u/%u R:%lums U/D", (unsigned)(offset / 21 + 1),
         (unsigned)((total + 20) / 21), (unsigned long)delay);
@@ -274,11 +272,13 @@ void ttf_view_draw_callback(Canvas* canvas, void* context) {
     uint32_t delay = app->key_delay_ms;
     bool     usb_detected = (app->usb_detect_tick != 0);
     size_t   hist_count   = app->history_count;
-    char text_copy[TTF_TEXT_BUFFER_SIZE];
+    // Snapshot only the visible page; large texts must never go on the GUI stack.
+    char preview[64] = {0};
+    size_t preview_total = 0;
+    if(state == AppStateTextReceived)
+        preview_total = ttf_preview(app->received_text, preview_offset, preview, sizeof(preview));
     char err_copy[TTF_ERROR_MSG_SIZE];
     char layout_copy[TTF_LAYOUT_NAME_SIZE];
-    strncpy(text_copy, app->received_text, sizeof(text_copy) - 1);
-    text_copy[sizeof(text_copy) - 1] = '\0';
     strncpy(err_copy, app->error_msg, sizeof(err_copy) - 1);
     err_copy[sizeof(err_copy) - 1] = '\0';
     strncpy(layout_copy, app->layout_name, sizeof(layout_copy) - 1);
@@ -317,7 +317,7 @@ void ttf_view_draw_callback(Canvas* canvas, void* context) {
         draw_history(canvas, hist_win, hist_win_n, hist_sel_inwin, hist_pos, hist_count);
         break;
     case AppStateTextReceived:
-        draw_text_received(canvas, text_copy, preview_offset, delay);
+        draw_text_received(canvas, preview, preview_total, preview_offset, delay);
         break;
     case AppStateWaitingUSB:
         draw_waiting_usb(canvas, usb_detected);

@@ -74,7 +74,7 @@ static uint16_t serial_data_callback(SerialServiceEvent event, void* context) {
 
         // Reject loss instead of silently making a truncated command executable.
         uint16_t copy_size = event.data.size;
-        if(copy_size >= TTF_TEXT_BUFFER_SIZE) {
+        if(copy_size >= sizeof(ev.text)) {
             atomic_store(&app->rx_overflow, true);
             return event.data.size;
         }

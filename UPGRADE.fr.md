@@ -1,5 +1,10 @@
 # Mise à jour du client PC et du Flipper
 
+**Nouveauté v2.1.0 :** jusqu'à **4 096 octets ASCII par envoi**, tags compris.
+Mettre à jour le FAP **et** le client PC pour profiter de cette capacité.
+Le nouveau client détecte la limite du Flipper : avec un ancien FAP v2.0.x,
+la connexion reste possible, mais la limite reste de 255 octets.
+
 **Correctif v2.0.2 :** suppression du double affichage des commandes au bas de
 l'écran Flipper. L'historique affiche trois lignes sans recouvrir le pied d'écran,
 et l'indication `Up:Log` ne recouvre plus le message central. Remplacer le FAP ;
@@ -11,8 +16,8 @@ après le message « ne répond pas au protocole TTF1 ». Si le FAP v2.0.0 est d
 installé, seul le client PC doit être remplacé. La connexion a été vérifiée sur un Flipper,
 avec Momentum mntm-012, sans envoyer de texte ni de touches USB.
 
-Cette version nécessite **les deux nouvelles applications**. Le transfert utilise
-désormais une longueur et un CRC32 ; les anciennes versions ne sont pas compatibles.
+Depuis une version 1.x, installer **les deux nouvelles applications**. Le transfert
+utilise une longueur et un CRC32 ; les versions 1.x ne sont pas compatibles.
 Le client refuse l'envoi tant que l'application Flipper n'a pas confirmé sa version.
 
 ## Installation
@@ -55,8 +60,10 @@ Le client refuse l'envoi tant que l'application Flipper n'a pas confirmé sa ver
   Une coupure Bluetooth arrête aussi l'envoi ; une coupure USB signale une erreur.
 - Un texte trop long, une perte de données, un CRC incorrect ou un transfert incomplet
   après 5 secondes est refusé. Aucun fragment reçu ne devient un texte à confirmer.
+- L'historique garde jusqu'à 10 textes en RAM, dans un budget d'environ 8 Kio
+  (soit deux textes à la taille maximale). Les plus anciens sont retirés si nécessaire.
 
-La limite reste **255 octets, tags compris**. Le clavier existant accepte l'ASCII,
+La limite est de **4 096 octets, tags compris**. Le clavier existant accepte l'ASCII,
 les tabulations et les retours à la ligne. Les caractères non pris en charge sont
 refusés explicitement. Le sélecteur de layout existant reste accessible avec Gauche.
 

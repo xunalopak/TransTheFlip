@@ -3,10 +3,10 @@ import tempfile
 import unittest
 import zlib
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, AsyncMock, patch
 from types import SimpleNamespace
 
-from protocol import encode_text, NotificationLines, write_text, bluetooth_diagnostic
+from protocol import encode_text, NotificationLines, write_text, bluetooth_diagnostic, peer_capacity, MAX_TEXT_BYTES
 from trans_gui import App, load_last_device, save_last_device
 
 
@@ -19,8 +19,9 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
             self.assertLessEqual(len(data), 20)
             writes.append(data)
 
-        text = "first\nsecond\t[ENTER]" * 8
-        await write_text(SimpleNamespace(write_gatt_char=write), text, progress.append)
+        text = ("first\nsecond\t[ENTER]" * 250)[:MAX_TEXT_BYTES]
+        with patch("protocol.asyncio.sleep", new=AsyncMock()):
+            await write_text(SimpleNamespace(write_gatt_char=write), text, progress.append)
         header, payload = b"".join(writes).split(b"\n", 1)
         magic, length, crc = header.split()
         self.assertEqual(magic, b"TTF1")
@@ -28,10 +29,21 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(int(crc, 16), zlib.crc32(payload))
         self.assertEqual(payload.decode(), text)
         self.assertEqual(progress[-1], 1)
-        self.assertEqual(len(encode_text("x" * 255).split(b"\n", 1)[1]), 255)
-        for invalid in ("", "x" * 256, "é", "a\0b"):
+        self.assertEqual(len(payload), 4096)
+        self.assertEqual(len(encode_text("x" * 256).split(b"\n", 1)[1]), 256)
+        for invalid in ("", "x" * 4097, "é", "a\0b"):
             with self.assertRaises(ValueError):
                 encode_text(invalid)
+
+    async def test_negotiated_capacity(self):
+        for advertised, expected in (("255", 255), ("4096", 4096), ("65535", 4096)):
+            self.assertEqual(peer_capacity("READY:1:" + advertised), expected)
+        for invalid in ("READY:1:0", "READY:2:4096", "READY:1:-1", "READY:1:999999", "RECV"):
+            self.assertIsNone(peer_capacity(invalid))
+        client = SimpleNamespace(write_gatt_char=AsyncMock())
+        with self.assertRaisesRegex(ValueError, "maximum 255"):
+            await write_text(client, "x" * 256, max_bytes=255)
+        client.write_gatt_char.assert_not_called()
 
     async def test_notifications_fragmentation(self):
         lines = NotificationLines()
@@ -58,6 +70,7 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
             entry=Mock(), _pending_text=None, _connected=True, _history=[],
             _worker=Mock(), send_btn=Mock(), progress_bar=Mock(), transfer_label=Mock(),
             history_menu=Mock(), _log=Mock(),
+            _max_text_bytes=MAX_TEXT_BYTES,
         )
         app._finish_transfer = lambda message: App._finish_transfer(app, message)
         text = "first\nsecond"
