@@ -19,7 +19,7 @@ le client PC v2.0.1 reste compatible.
 du Flipper (FE61), et non le contrôle de débit (FE63). Cela corrige la déconnexion
 après le message « ne répond pas au protocole TTF1 ». Si le FAP v2.0.0 est déjà
 installé, seul le client PC doit être remplacé. La connexion a été vérifiée sur un Flipper,
-avec Momentum mntm-012, sans envoyer de texte ni de touches USB.
+avec un firmware Momentum compatible, sans envoyer de texte ni de touches USB.
 
 Depuis une version 1.x, installer **les deux nouvelles applications**. Le transfert
 utilise une longueur et un CRC32 ; les versions 1.x ne sont pas compatibles.
