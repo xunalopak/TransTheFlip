@@ -1,9 +1,7 @@
 # TransTheFlip — BLE Remote Bad USB
 
 > Update the PC client and Flipper application together: transfers now require the
-> TTF1 length/CRC protocol. See [upgrade instructions and features (French)](UPGRADE.fr.md).
-
-> 📖 Version française : [README.fr.md](README.fr.md)
+> TTF1 length/CRC protocol. See the [upgrade instructions and features](UPGRADE.md).
 
 Send text from a master PC to a Flipper Zero over Bluetooth LE.
 The Flipper automatically types it as USB HID keystrokes on the target PC.
@@ -22,7 +20,7 @@ The PC client supports both a command-line mode and a Windows GUI.
    Required: BLE characteristics are protected by authentication.
 4. Start `TransTheFlip-GUI.exe` or `trans_client.py` on the **master PC**
 5. Type your text in the client — it appears on the Flipper screen
-6. Press **OK** (center button), or click **Exécuter sur le Flipper** in the GUI
+6. Press **OK** (center button), or click **Execute on Flipper** in the GUI
    → the Flipper types the text on the target PC
 7. Press **Back** to cancel
 
@@ -64,7 +62,7 @@ net user[ENTER][DELAY:1000][ALT+F4]
 
 ## ⚠️ QWERTY keyboard layout
 
-The ASCII → HID mapping is based on **QWERTY US**.  
+The ASCII → HID mapping is based on **QWERTY US**.
 If the target PC uses a different layout (e.g. **AZERTY**, **QWERTZ**), special
 characters (`@`, `&`, accented chars, etc.) will be wrong.
 
@@ -134,8 +132,12 @@ python trans_client.py
 > ✅  Flipper: text sent successfully
 ```
 
-The GUI executable has **Send**, **Exécuter sur le Flipper** and **Déconnecter**
-buttons. Send transfers and verifies the text; execution remains a separate action+so a long or sensitive command is never typed accidentally. Texts over 4,096 bytes+are temporarily stored on the Flipper SD card and removed after completion or cancel.
+The GUI executable has **Send**, **Execute on Flipper** and **Disconnect**
+buttons. Send transfers and verifies the text; execution remains a separate action
+so a long or sensitive command is never typed accidentally. Texts over 4,096 bytes
+are temporarily stored on the Flipper SD card and removed after completion or cancel.
+Use the language menu to switch the GUI between French and English. The command-line
+client is English-only.
 
 ## Project structure
 

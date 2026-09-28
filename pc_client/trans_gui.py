@@ -82,6 +82,99 @@ def save_last_device(address, name, path=SETTINGS_PATH):
 # Flipper usually shows up within the first second — no need to wait longer.
 GUI_SCAN_TIMEOUT = 5.0
 
+GUI_TEXT = {
+    "en": {
+        "title": "TransTheFlip — BLE Remote HID",
+        "disconnected": "● Disconnected", "scanning": "● Scanning...",
+        "connecting": "● Connecting...", "disconnecting": "● Disconnecting...",
+        "connected": "● Connected: {name}", "scan": "Scan", "connect": "Connect",
+        "disconnect": "Disconnect", "send": "Send", "execute": "Execute on Flipper",
+        "scan_first": "(scan first)", "no_devices": "(no devices)",
+        "history": "Session history", "hint": "Up to {bytes} bytes · Enter: new line · Ctrl+Enter: send",
+        "ready": "Ready. Click Scan to discover your Flipper Zero.",
+        "select_device": "⚠️  Select a device first (click Scan).",
+        "not_connected": "❌  Not connected.", "transfer": "Bluetooth transfer in progress…",
+        "execute_requested": "Execution requested on the Flipper…",
+        "connection_lost": "Connection lost or closed. Result unconfirmed; text kept.",
+        "transfer_progress": "Bluetooth transfer: {percent:.0%} — waiting for verification",
+        "hid_progress": "Typing on target PC: {percent}% — return to Flipper to stop",
+        "capacity": "Flipper capacity: {bytes} bytes, including tags.",
+        "upgrade_capacity": " Update the FAP to reach {bytes} bytes.",
+        "remembered": "Last Flipper remembered: click Connect to reconnect.",
+        "remember_error": "Unable to remember the device: {error}",
+        "language": "Language",
+        "scan_start": "🔍  Scanning BLE ({seconds:.0f}s)...",
+        "service_hint": "    → Check that Bluetooth is on and the Bluetooth service is running.",
+        "devices_found": "📡  {count} device(s) found, {flippers} Flipper(s).",
+        "no_device_log": "No device found. Enable Bluetooth, move the Flipper closer, and open TransTheFlip.",
+        "connecting_log": "🔗  Connecting to {name}...",
+        "pairing": "Confirm the pairing code on the Flipper if prompted (up to 60s).",
+        "device_not_found": "Device not found — scan again.",
+        "service_not_found": "Flipper serial service not found — open TransTheFlip, close other Bluetooth clients, then reconnect.",
+        "protocol_timeout": "TransTheFlip did not answer the TTF1 protocol. Install the latest Flipper app and open it.",
+        "disconnected_setup": "Device disconnected during setup.", "disconnect_error": "⚠️  Disconnect error: {error}",
+        "disconnected_log": "👋  Disconnected.", "already_waiting": "A transfer is already waiting for the Flipper result.",
+        "send_error": "Transfer interrupted. The text is kept.", "receipt_timeout": "No receipt from the Flipper.",
+        "retry_suffix": " Text kept; reconnect before retrying.", "no_pending": "No text is waiting on the Flipper.",
+        "execution_log": "▶  Execution requested from the PC.", "execution_error": "Execution failed: {error}",
+        "link_lost": "🔌  Link lost (device disconnected).", "preserved": "Connection lost or closed. Result unconfirmed; text kept.",
+    },
+    "fr": {
+        "title": "TransTheFlip — HID distant BLE",
+        "disconnected": "● Déconnecté", "scanning": "● Recherche...",
+        "connecting": "● Connexion...", "disconnecting": "● Déconnexion...",
+        "connected": "● Connecté : {name}", "scan": "Rechercher", "connect": "Connecter",
+        "disconnect": "Déconnecter", "send": "Envoyer", "execute": "Exécuter sur le Flipper",
+        "scan_first": "(lancer une recherche)", "no_devices": "(aucun appareil)",
+        "history": "Historique de la session", "hint": "Jusqu’à {bytes} octets · Entrée : nouvelle ligne · Ctrl+Entrée : envoyer",
+        "ready": "Prêt. Cliquez sur Rechercher pour détecter votre Flipper Zero.",
+        "select_device": "⚠️  Sélectionnez d’abord un appareil (cliquez sur Rechercher).",
+        "not_connected": "❌  Non connecté.", "transfer": "Transfert Bluetooth en cours…",
+        "execute_requested": "Exécution demandée au Flipper…",
+        "connection_lost": "Connexion perdue ou fermée. Résultat non confirmé ; texte conservé.",
+        "transfer_progress": "Transfert Bluetooth : {percent:.0%} — attente de vérification",
+        "hid_progress": "Frappe sur le PC cible : {percent}% — retour sur le Flipper pour arrêter",
+        "capacity": "Capacité du Flipper : {bytes} octets, tags compris.",
+        "upgrade_capacity": " Mettez le FAP à jour pour passer à {bytes} octets.",
+        "remembered": "Dernier Flipper mémorisé : cliquez sur Connecter pour vous reconnecter.",
+        "remember_error": "Impossible de mémoriser le périphérique : {error}",
+        "language": "Langue",
+        "scan_start": "🔍  Recherche Bluetooth ({seconds:.0f} s)...",
+        "service_hint": "    → Vérifiez que le Bluetooth et le service Bluetooth sont actifs.",
+        "devices_found": "📡  {count} appareil(s) trouvé(s), dont {flippers} Flipper(s).",
+        "no_device_log": "Aucun appareil détecté. Activez le Bluetooth, rapprochez le Flipper et ouvrez TransTheFlip.",
+        "connecting_log": "🔗  Connexion à {name}...",
+        "pairing": "Confirmez le code d’appairage sur le Flipper si demandé (jusqu’à 60 s).",
+        "device_not_found": "Appareil introuvable — relancez la recherche.",
+        "service_not_found": "Service série du Flipper introuvable — ouvrez TransTheFlip, fermez les autres clients Bluetooth, puis reconnectez-vous.",
+        "protocol_timeout": "TransTheFlip ne répond pas au protocole TTF1. Installez et ouvrez la dernière application Flipper.",
+        "disconnected_setup": "L’appareil s’est déconnecté pendant la configuration.", "disconnect_error": "⚠️  Erreur de déconnexion : {error}",
+        "disconnected_log": "👋  Déconnecté.", "already_waiting": "Un transfert attend déjà le résultat du Flipper.",
+        "send_error": "Transfert interrompu. Le texte est conservé.", "receipt_timeout": "Aucun accusé de réception du Flipper.",
+        "retry_suffix": " Texte conservé ; reconnectez-vous avant de réessayer.", "no_pending": "Aucun texte en attente sur le Flipper.",
+        "execution_log": "▶  Exécution demandée depuis le PC.", "execution_error": "Exécution impossible : {error}",
+        "link_lost": "🔌  Connexion perdue (appareil déconnecté).", "preserved": "Connexion perdue ou fermée. Résultat non confirmé ; texte conservé.",
+    },
+}
+
+STATUS_TEXT_FR = {
+    "RECV": "Texte vérifié — en attente de confirmation sur le Flipper.",
+    "WAIT_USB": "En attente du branchement USB au PC cible.",
+    "SENDING": "Frappe en cours sur le PC cible…",
+    "OK": "Terminé : frappe confirmée par le Flipper.",
+    "CANCEL": "Annulé sur le Flipper. Le texte est conservé.",
+    "ERR:HID": "Échec de frappe : vérifiez la connexion USB au PC cible.",
+    "ERR:LENGTH": "Le texte dépasse la capacité annoncée par le Flipper, tags compris.",
+    "ERR:CHECKSUM": "Transfert corrompu ou incomplet : reconnectez-vous avant de réessayer.",
+    "ERR:TIMEOUT": "Transfert incomplet : reconnectez-vous avant de réessayer.",
+    "ERR:OVERFLOW": "Données Bluetooth perdues : reconnectez-vous avant de réessayer.",
+    "ERR:PROTOCOL": "Protocole incompatible : installez la nouvelle application Flipper.",
+    "ERR:CHAR": "Caractère non pris en charge par le clavier du Flipper.",
+    "ERR:BUSY": "Flipper occupé : terminez ou annulez l’envoi sur le Flipper.",
+    "ERR:MEMORY": "Mémoire insuffisante sur le Flipper.",
+    "ERR:STORAGE": "Erreur de lecture/écriture sur la carte SD du Flipper.",
+}
+
 # Flipper → PC status codes, mapped to human-readable lines.
 STATUS_MAP = {
     "OK":     "✅  Flipper: text sent successfully",
@@ -169,7 +262,7 @@ class BleWorker:
     # ---- coroutines (run on the asyncio thread) ----
     async def _scan(self) -> None:
         self._emit("scanning", True)
-        self._emit("log", f"🔍  Scanning BLE ({GUI_SCAN_TIMEOUT:.0f}s)...")
+        self._emit("log", ("i18n", "scan_start", {"seconds": GUI_SCAN_TIMEOUT}))
 
         # Collect devices live via a detection callback (address -> entry).
         # This is more robust than discover() across backends and lets the
@@ -191,36 +284,33 @@ class BleWorker:
             async with BleakScanner(detection_callback=_on_detection):
                 await asyncio.sleep(GUI_SCAN_TIMEOUT)
         except Exception as exc:  # noqa: BLE001
-            self._emit("log", bluetooth_diagnostic(exc))
-            self._emit(
-                "log",
-                "    → Check that Bluetooth is on and the bluetooth service is running.",
-            )
+            self._emit("diagnostic", exc)
+            self._emit("log", ("i18n", "service_hint", {}))
             self._emit("scanning", False)
             return
 
         n_flippers = sum(1 for entry in found.values() if entry[2])
         self._emit(
             "log",
-            f"📡  {len(found)} device(s) found, {n_flippers} Flipper(s).",
+            ("i18n", "devices_found", {"count": len(found), "flippers": n_flippers}),
         )
         self._emit("devices", _order_devices(found))
         if not found:
-            self._emit("log", "Aucun appareil détecté. Activez le Bluetooth, rapprochez le Flipper et ouvrez TransTheFlip.")
+            self._emit("log", ("i18n", "no_device_log", {}))
         self._emit("scanning", False)
 
     async def _connect(self, address: str, name: str) -> None:
         if self._connect_task is not None or self._client is not None:
             return
         self._connect_task = asyncio.current_task()
-        self._emit("log", f"🔗  Connecting to {name}...")
-        self._emit("log", "Confirm the pairing code on the Flipper if prompted (up to 60s).")
+        self._emit("log", ("i18n", "connecting_log", {"name": name}))
+        self._emit("log", ("i18n", "pairing", {}))
         try:
             device = self._devices.get(address)
             if device is None:
                 device = await BleakScanner.find_device_by_address(address, timeout=12.0)
                 if device is None:
-                    raise RuntimeError("Device not found — relancez Scan.")
+                    raise RuntimeError("Device not found — scan again.")
                 self._devices[address] = device
             self._notifications = NotificationLines()
             self._ready = asyncio.Event()
@@ -241,7 +331,7 @@ class BleWorker:
             service_uuids = [s.uuid.lower() for s in client.services]
             if FLIPPER_SERVICE_UUID not in service_uuids:
                 raise RuntimeError(
-                    "Flipper serial service not found — open TransTheFlip on the Flipper, "
+                    "Flipper serial service not found — open TransTheFlip, "
                     "close other Bluetooth clients, then reconnect."
                 )
 
@@ -254,7 +344,7 @@ class BleWorker:
             try:
                 await asyncio.wait_for(self._ready.wait(), 5.0)
             except asyncio.TimeoutError:
-                raise RuntimeError("TransTheFlip ne répond pas au protocole TTF1. Installez la nouvelle application sur le Flipper et ouvrez-la.") from None
+                raise RuntimeError("TransTheFlip did not answer the TTF1 protocol. Install the latest Flipper app and open it.") from None
             if self._receive_error:
                 raise RuntimeError(self._receive_error)
             if self._client is not client or not client.is_connected:
@@ -264,7 +354,7 @@ class BleWorker:
             await self._disconnect()
             raise
         except Exception as exc:  # noqa: BLE001
-            self._emit("log", bluetooth_diagnostic(exc))
+            self._emit("diagnostic", exc)
             await self._disconnect()
         finally:
             self._connect_task = None
@@ -286,18 +376,18 @@ class BleWorker:
             try:
                 await client.disconnect()
             except Exception as exc:  # noqa: BLE001
-                self._emit("log", f"⚠️  Disconnect error: {exc}")
+                self._emit("log", ("i18n", "disconnect_error", {"error": str(exc)}))
             self._client = None
-            self._emit("log", "👋  Disconnected.")
+            self._emit("log", ("i18n", "disconnected_log", {}))
         self._emit("disconnected", None)
 
     async def _send(self, text: str) -> None:
         client = self._client
         if client is None or not client.is_connected:
-            self._emit("send_error", "Non connecté. Le texte est conservé.")
+            self._emit("send_error", "Not connected. The text is kept.")
             return
         if self._awaiting_result:
-            self._emit("log", "Un envoi attend déjà le résultat du Flipper.")
+            self._emit("log", "A transfer is already waiting for the Flipper result.")
             return
         self._send_task = asyncio.current_task()
         self._awaiting_result = True
@@ -311,12 +401,12 @@ class BleWorker:
                 raise RuntimeError(self._receive_error)
         except asyncio.CancelledError:
             self._awaiting_result = False
-            self._emit("send_error", "Transfert interrompu. Le texte est conservé.")
+            self._emit("send_error", "Transfer interrupted. The text is kept.")
             raise
         except Exception as exc:  # noqa: BLE001
             self._awaiting_result = False
-            message = "Aucun accusé de réception du Flipper." if isinstance(exc, TimeoutError) else str(exc)
-            self._emit("send_error", message + " Texte conservé ; reconnectez-vous avant de réessayer.")
+            message = "No receipt from the Flipper." if isinstance(exc, TimeoutError) else str(exc)
+            self._emit("send_error", message + " Text kept; reconnect before retrying.")
             await self._disconnect()
         finally:
             self._send_task = None
@@ -324,16 +414,16 @@ class BleWorker:
     async def _execute(self) -> None:
         client = self._client
         if client is None or not client.is_connected:
-            self._emit("send_error", "Non connecté. Le texte est conservé.")
+            self._emit("send_error", "Not connected. The text is kept.")
             return
         if not self._awaiting_result:
-            self._emit("log", "Aucun texte en attente sur le Flipper.")
+            self._emit("log", "No text is waiting on the Flipper.")
             return
         try:
             await client.write_gatt_char(RX_UUID, EXECUTE_COMMAND, response=True)
-            self._emit("log", "▶  Exécution demandée depuis le PC.")
+            self._emit("log", "▶  Execution requested from the PC.")
         except Exception as exc:  # noqa: BLE001
-            self._emit("send_error", f"Exécution impossible : {exc}")
+            self._emit("send_error", f"Execution failed: {exc}")
 
     # ---- bleak callbacks (asyncio thread) ----
     def _on_notify(self, _characteristic: BleakGATTCharacteristic, data: bytearray) -> None:
@@ -361,7 +451,7 @@ class BleWorker:
             return
         self._client = None
         self._awaiting_result = False
-        self._receive_error = "Connexion Bluetooth perdue."
+        self._receive_error = "Bluetooth connection lost."
         self._received.set()
         self._emit("log", "🔌  Link lost (device disconnected).")
         self._emit("disconnected", None)
@@ -373,7 +463,9 @@ class BleWorker:
 class App(ctk.CTk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("TransTheFlip — BLE Remote HID")
+        self._language = "fr"
+        self._connected_name = ""
+        self.title(GUI_TEXT[self._language]["title"])
         self.geometry("820x740")
         self.minsize(740, 650)
 
@@ -397,7 +489,7 @@ class App(ctk.CTk):
         self._build_ui()
         if self._last_device:
             self._populate_devices([(self._last_device["name"], self._last_device["address"])])
-            self._log("Dernier Flipper mémorisé : cliquez Connect pour vous reconnecter.")
+            self._log(self._tr("remembered"))
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(50, self._poll_events)
 
@@ -412,28 +504,34 @@ class App(ctk.CTk):
         bar.grid_columnconfigure(1, weight=1)
 
         self.status_label = ctk.CTkLabel(
-            bar, text="● Disconnected", text_color="#e05555", anchor="w"
+            bar, text=self._tr("disconnected"), text_color="#e05555", anchor="w"
         )
-        self.status_label.grid(row=0, column=0, columnspan=5, sticky="w", padx=10, pady=8)
+        self.status_label.grid(row=0, column=0, columnspan=6, sticky="w", padx=10, pady=8)
 
-        self.device_var = ctk.StringVar(value="(scan first)")
+        self.device_var = ctk.StringVar(value=self._tr("scan_first"))
         self.device_menu = ctk.CTkOptionMenu(
-            bar, values=["(scan first)"], variable=self.device_var, width=240
+            bar, values=[self._tr("scan_first")], variable=self.device_var, width=240
         )
         self.device_menu.grid(row=1, column=0, columnspan=2, sticky="ew", padx=6, pady=8)
 
-        self.scan_btn = ctk.CTkButton(bar, text="Scan", width=80, command=self._on_scan)
+        self.scan_btn = ctk.CTkButton(bar, text=self._tr("scan"), width=100, command=self._on_scan)
         self.scan_btn.grid(row=1, column=2, padx=6, pady=8)
 
         self.connect_btn = ctk.CTkButton(
-            bar, text="Connect", width=110, command=self._on_connect_click
+            bar, text=self._tr("connect"), width=110, command=self._on_connect_click
         )
         self.connect_btn.grid(row=1, column=3, padx=6, pady=8)
         self.disconnect_btn = ctk.CTkButton(
-            bar, text="Déconnecter", width=110,
+            bar, text=self._tr("disconnect"), width=110,
             command=self._on_disconnect_click, state="disabled",
         )
         self.disconnect_btn.grid(row=1, column=4, padx=(6, 10), pady=8)
+        self.language_menu = ctk.CTkOptionMenu(
+            bar, values=["Français", "English"], width=110,
+            command=self._on_language_change,
+        )
+        self.language_menu.set("Français")
+        self.language_menu.grid(row=1, column=5, padx=(0, 10), pady=8)
 
         # Row 1 — text entry + send
         entry_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -445,20 +543,20 @@ class App(ctk.CTk):
         self.entry.bind("<Control-Return>", self._on_send)
 
         self.send_btn = ctk.CTkButton(
-            entry_frame, text="Send", width=110, command=self._on_send, state="disabled"
+            entry_frame, text=self._tr("send"), width=110, command=self._on_send, state="disabled"
         )
         self.send_btn.grid(row=0, column=1)
         self.execute_btn = ctk.CTkButton(
-            entry_frame, text="Exécuter sur le Flipper", width=170,
+            entry_frame, text=self._tr("execute"), width=170,
             command=self._on_execute, state="disabled",
         )
         self.execute_btn.grid(row=0, column=2, padx=(8, 0))
         self.history_menu = ctk.CTkOptionMenu(
-            entry_frame, values=["Historique de la session"], command=self._restore_history,
+            entry_frame, values=[self._tr("history")], command=self._restore_history,
         )
         self.history_menu.grid(row=1, column=0, columnspan=2, sticky="ew", pady=6)
         self.transfer_label = ctk.CTkLabel(
-            entry_frame, text=f"Jusqu’à {MAX_TEXT_BYTES} octets · Entrée : nouvelle ligne · Ctrl+Entrée : envoyer",
+            entry_frame, text=self._tr("hint", bytes=MAX_TEXT_BYTES),
             wraplength=690, anchor="w",
         )
         self.transfer_label.grid(row=2, column=0, columnspan=2, sticky="ew")
@@ -487,9 +585,78 @@ class App(ctk.CTk):
         self.log_box = ctk.CTkTextbox(self, wrap="word")
         self.log_box.grid(row=3, column=0, sticky="nsew", padx=10, pady=(6, 10))
         self.log_box.configure(state="disabled")
-        self._log("Ready. Click Scan to discover your Flipper Zero.")
+        self._log(self._tr("ready"))
 
     # ---- helpers ----
+    def _tr(self, key: str, **values) -> str:
+        return GUI_TEXT[getattr(self, "_language", "fr")][key].format(**values)
+
+    def _localize_text(self, text: str) -> str:
+        language = getattr(self, "_language", "fr")
+        if language == "en":
+            return text
+        for code, english in STATUS_TEXT.items():
+            if text == english:
+                return STATUS_TEXT_FR.get(code, text)
+        replacements = {
+            "Not connected. The text is kept.": App._tr(self, "not_connected"),
+            "Transfer interrupted. The text is kept.": App._tr(self, "send_error"),
+            "A transfer is already waiting for the Flipper result.": App._tr(self, "already_waiting"),
+            "No text is waiting on the Flipper.": App._tr(self, "no_pending"),
+            "Bluetooth connection lost.": "Connexion Bluetooth perdue.",
+            "Text is empty.": "Le texte est vide.",
+            "Unsupported character: use ASCII text, tabs, and line breaks.": "Caractère non pris en charge : utilisez du texte ASCII, des tabulations et des retours à la ligne.",
+        }
+        if text in replacements:
+            return replacements[text]
+        if text.startswith("Text too long:"):
+            return text.replace("Text too long:", "Texte trop long:").replace(" bytes, maximum ", " octets, maximum ").replace(" (including tags).", " (tags compris).")
+        if text.startswith("No receipt from the Flipper."):
+            return App._tr(self, "receipt_timeout") + text[len("No receipt from the Flipper."):]
+        if text.endswith(" Text kept; reconnect before retrying."):
+            return text[:-len(" Text kept; reconnect before retrying.")] + App._tr(self, "retry_suffix")
+        if text.startswith("Execution failed: "):
+            return App._tr(self, "execution_error", error=text.removeprefix("Execution failed: "))
+        if text.startswith("Device not found"):
+            return App._tr(self, "device_not_found")
+        if text.startswith("Flipper serial service not found"):
+            return App._tr(self, "service_not_found")
+        if text.startswith("TransTheFlip did not answer"):
+            return App._tr(self, "protocol_timeout")
+        if text == "Device disconnected during setup.":
+            return App._tr(self, "disconnected_setup")
+        if text.startswith("🔌  Link lost"):
+            return App._tr(self, "link_lost")
+        if text.startswith("Connection lost or closed"):
+            return App._tr(self, "connection_lost")
+        return text
+
+    def _on_language_change(self, label: str) -> None:
+        self._language = "en" if label == "English" else "fr"
+        self._apply_language()
+
+    def _apply_language(self) -> None:
+        self.title(self._tr("title"))
+        self.scan_btn.configure(text=self._tr("scan"))
+        self.connect_btn.configure(text=self._tr("connect"))
+        self.disconnect_btn.configure(text=self._tr("disconnect"))
+        self.send_btn.configure(text=self._tr("send"))
+        self.execute_btn.configure(text=self._tr("execute"))
+        self.transfer_label.configure(text=self._tr("hint", bytes=self._max_text_bytes))
+        if self._history:
+            self.history_menu.configure(values=[f"{i}. {item[:45].replace(chr(10), ' ↵ ')}" for i, item in enumerate(self._history, 1)])
+        else:
+            self.history_menu.configure(values=[self._tr("history")])
+        if not self._dev_map:
+            self.device_menu.configure(values=[self._tr("scan_first")])
+            self.device_var.set(self._tr("scan_first"))
+        if self._connected:
+            self._set_status(self._tr("connected", name=self._connected_name), "#55cc66")
+        elif self._busy:
+            self._set_status(self._tr("connecting"), "#e0a955")
+        else:
+            self._set_status(self._tr("disconnected"), "#e05555")
+
     def _log(self, text: str) -> None:
         self.log_box.configure(state="normal")
         self.log_box.insert("end", text + "\n")
@@ -530,14 +697,14 @@ class App(ctk.CTk):
         label = self.device_var.get()
         address = self._dev_map.get(label)
         if not address:
-            self._log("⚠️  Select a device first (click Scan).")
+            self._log(self._tr("select_device"))
             return
         self.connect_btn.configure(state="disabled")
         self.scan_btn.configure(state="disabled")
         self.device_menu.configure(state="disabled")
         self.disconnect_btn.configure(state="normal")
         self._busy = True
-        self._set_status("● Connecting...", "#e0a955")
+        self._set_status(self._tr("connecting"), "#e0a955")
         self._worker.connect(address, label)
 
     def _on_disconnect_click(self) -> None:
@@ -545,7 +712,7 @@ class App(ctk.CTk):
         self.disconnect_btn.configure(state="disabled")
         self.send_btn.configure(state="disabled")
         self.execute_btn.configure(state="disabled")
-        self._set_status("● Disconnecting...", "#e0a955")
+        self._set_status(App._tr(self, "disconnecting"), "#e0a955")
         self._worker.disconnect()
 
     def _on_send(self, _event=None) -> None:
@@ -555,18 +722,18 @@ class App(ctk.CTk):
         if self._pending_text is not None:
             return "break"
         if not self._connected:
-            self._log("❌  Not connected.")
+            self._log(self._tr("not_connected"))
             return "break"
         try:
             encode_text(text, self._max_text_bytes)
         except ValueError as exc:
-            self.transfer_label.configure(text=str(exc))
+            self.transfer_label.configure(text=self._localize_text(str(exc)))
             return "break"
         self._pending_text = text
         self._transfer_stage = "transfer"
         self.send_btn.configure(state="disabled")
         self.progress_bar.set(0)
-        self.transfer_label.configure(text="Transfert Bluetooth en cours…")
+        self.transfer_label.configure(text=App._tr(self, "transfer"))
         self._log(f"→  {text}")
         self._worker.send(text)
         return "break"
@@ -575,7 +742,7 @@ class App(ctk.CTk):
         if self._pending_text is None or self._transfer_stage != "RECV":
             return
         self.execute_btn.configure(state="disabled")
-        self.transfer_label.configure(text="Exécution demandée au Flipper…")
+        self.transfer_label.configure(text=App._tr(self, "execute_requested"))
         self._worker.execute()
 
     # ---- event pump (drains worker events on the Tk thread) ----
@@ -590,38 +757,44 @@ class App(ctk.CTk):
 
     def _handle_event(self, kind: str, payload: object) -> None:
         if kind == "log":
-            self._log(str(payload))
+            if isinstance(payload, tuple) and len(payload) == 3 and payload[0] == "i18n":
+                self._log(App._tr(self, str(payload[1]), **payload[2]))
+            else:
+                self._log(self._localize_text(str(payload)))
+        elif kind == "diagnostic":
+            self._log(bluetooth_diagnostic(payload, getattr(self, "_language", "fr")))
         elif kind == "scanning":
             if payload:
                 if not self._connected:
-                    self._set_status("● Scanning...", "#e0a955")
+                    self._set_status(App._tr(self, "scanning"), "#e0a955")
             else:
                 if not self._connected and not self._busy:
                     self.scan_btn.configure(state="normal")
                     self.connect_btn.configure(state="normal")
-                    self._set_status("● Disconnected", "#e05555")
+                    self._set_status(App._tr(self, "disconnected"), "#e05555")
         elif kind == "devices":
             self._populate_devices(payload)  # type: ignore[arg-type]
         elif kind == "capacity":
             self._max_text_bytes = int(payload)
-            message = f"Capacité du Flipper : {payload} octets, tags compris."
+            message = App._tr(self, "capacity", bytes=payload)
             if self._max_text_bytes < MAX_TEXT_BYTES:
-                message += f" Mettez le FAP à jour pour passer à {MAX_TEXT_BYTES} octets."
+                message += App._tr(self, "upgrade_capacity", bytes=MAX_TEXT_BYTES)
             self.transfer_label.configure(text=message)
             self._log(message)
         elif kind == "connected":
             self._connected = True
             self._busy = False
+            self._connected_name = str(payload)
             self.connect_btn.configure(state="disabled")
             self.disconnect_btn.configure(state="normal")
             self.send_btn.configure(state="normal")
-            self._set_status(f"● Connected: {payload}", "#55cc66")
+            self._set_status(App._tr(self, "connected", name=payload), "#55cc66")
             address = self._dev_map.get(str(payload))
             if address:
                 try:
                     save_last_device(address, str(payload))
                 except OSError as exc:
-                    self._log(f"Impossible de mémoriser le périphérique : {exc}")
+                    self._log(App._tr(self, "remember_error", error=exc))
         elif kind == "disconnected":
             self._connected = False
             self._busy = False
@@ -631,27 +804,30 @@ class App(ctk.CTk):
             self.disconnect_btn.configure(state="disabled")
             self.send_btn.configure(state="disabled")
             self.execute_btn.configure(state="disabled")
-            self._set_status("● Disconnected", "#e05555")
+            self._connected_name = ""
+            self._set_status(App._tr(self, "disconnected"), "#e05555")
             if self._pending_text is not None:
-                self._finish_transfer("Connexion perdue ou fermée. Résultat non confirmé ; texte conservé.")
+                self._finish_transfer(App._tr(self, "connection_lost"))
         elif kind == "transfer_progress":
             if self._pending_text is not None and self._transfer_stage == "transfer":
                 self.progress_bar.set(float(payload))
-                self.transfer_label.configure(text=f"Transfert Bluetooth : {float(payload):.0%} — attente de vérification")
+                self.transfer_label.configure(text=App._tr(self, "transfer_progress", percent=float(payload)))
         elif kind == "send_error":
-            self._log(str(payload))
-            self._finish_transfer(str(payload))
+            message = App._localize_text(self, str(payload))
+            self._log(message)
+            self._finish_transfer(message)
         elif kind == "notify":
             msg = str(payload)
             self._transfer_stage = msg
-            message = STATUS_TEXT.get(msg, f"Flipper : {msg}")
+            language = getattr(self, "_language", "fr")
+            message = STATUS_TEXT_FR.get(msg, f"Flipper : {msg}") if language == "fr" else STATUS_TEXT.get(msg, f"Flipper: {msg}")
             if msg.startswith("PROGRESS:"):
                 try:
                     percent = max(0, min(100, int(msg.split(":", 1)[1])))
                 except ValueError:
                     return
                 self.progress_bar.set(percent / 100)
-                self.transfer_label.configure(text=f"Frappe sur le PC cible : {percent}% — Retour sur le Flipper pour arrêter")
+                self.transfer_label.configure(text=App._tr(self, "hid_progress", percent=percent))
                 return
             self._log(message)
             self.transfer_label.configure(text=message)
@@ -681,8 +857,9 @@ class App(ctk.CTk):
             if self.device_var.get() not in self._dev_map:
                 self.device_var.set(labels[0])
         else:
-            self.device_menu.configure(values=["(no devices)"])
-            self.device_var.set("(no devices)")
+            placeholder = App._tr(self, "no_devices")
+            self.device_menu.configure(values=[placeholder])
+            self.device_var.set(placeholder)
 
     # ---- shutdown ----
     def _on_close(self) -> None:

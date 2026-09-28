@@ -9,21 +9,21 @@ MAX_TEXT_BYTES = 65536
 CHUNK_SIZE = 20
 
 STATUS_TEXT = {
-    "RECV": "Texte vérifié — en attente de confirmation sur le Flipper.",
-    "WAIT_USB": "En attente du branchement USB au PC cible.",
-    "SENDING": "Frappe en cours sur le PC cible…",
-    "OK": "Terminé : frappe confirmée par le Flipper.",
-    "CANCEL": "Annulé sur le Flipper. Le texte est conservé.",
-    "ERR:HID": "Échec de frappe : vérifiez la connexion USB au PC cible.",
-    "ERR:LENGTH": "Le texte dépasse la capacité annoncée par le Flipper, tags compris.",
-    "ERR:CHECKSUM": "Transfert corrompu ou incomplet : reconnectez-vous avant de réessayer.",
-    "ERR:TIMEOUT": "Transfert incomplet : reconnectez-vous avant de réessayer.",
-    "ERR:OVERFLOW": "Données Bluetooth perdues : reconnectez-vous avant de réessayer.",
-    "ERR:PROTOCOL": "Protocole incompatible : installez la nouvelle application Flipper.",
-    "ERR:CHAR": "Caractère non pris en charge par le clavier du Flipper.",
-    "ERR:BUSY": "Flipper occupé : terminez ou annulez l’envoi sur le Flipper.",
-    "ERR:MEMORY": "Mémoire insuffisante sur le Flipper.",
-    "ERR:STORAGE": "Erreur de lecture/écriture sur la carte SD du Flipper.",
+    "RECV": "Text verified — waiting for confirmation on the Flipper.",
+    "WAIT_USB": "Waiting for the USB connection to the target PC.",
+    "SENDING": "Typing on the target PC…",
+    "OK": "Done: typing confirmed by the Flipper.",
+    "CANCEL": "Cancelled on the Flipper. The text is kept.",
+    "ERR:HID": "Typing failed: check the USB connection to the target PC.",
+    "ERR:LENGTH": "The text exceeds the capacity reported by the Flipper, including tags.",
+    "ERR:CHECKSUM": "Corrupted or incomplete transfer: reconnect before retrying.",
+    "ERR:TIMEOUT": "Incomplete transfer: reconnect before retrying.",
+    "ERR:OVERFLOW": "Bluetooth data was lost: reconnect before retrying.",
+    "ERR:PROTOCOL": "Incompatible protocol: install the latest Flipper app.",
+    "ERR:CHAR": "Character not supported by the Flipper keyboard.",
+    "ERR:BUSY": "Flipper is busy: finish or cancel the transfer on the Flipper.",
+    "ERR:MEMORY": "Not enough memory on the Flipper.",
+    "ERR:STORAGE": "Read/write error on the Flipper SD card.",
 }
 
 
@@ -55,13 +55,13 @@ def peer_capacity(message):
 def encode_text(text, max_bytes=MAX_TEXT_BYTES):
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     if not text:
-        raise ValueError("Le texte est vide.")
+        raise ValueError("Text is empty.")
     if any(ord(c) > 126 or (ord(c) < 32 and c not in "\n\t") for c in text):
-        raise ValueError("Caractère non pris en charge : utilisez du texte ASCII, des tabulations et des retours à la ligne.")
+        raise ValueError("Unsupported character: use ASCII text, tabs, and line breaks.")
     payload = text.encode("ascii")
     limit = min(max_bytes, MAX_TEXT_BYTES)
     if len(payload) > limit:
-        raise ValueError(f"Texte trop long : {len(payload)} octets, maximum {limit} (tags compris).")
+        raise ValueError(f"Text too long: {len(payload)} bytes, maximum {limit} (including tags).")
     return f"TTF1 {len(payload)} {zlib.crc32(payload):08x}\n".encode("ascii") + payload
 
 
@@ -74,15 +74,25 @@ async def write_text(client, text, progress=lambda value: None, max_bytes=MAX_TE
             await asyncio.sleep(0.05)
 
 
-def bluetooth_diagnostic(exc):
+def bluetooth_diagnostic(exc, language="en"):
     detail = str(exc) or type(exc).__name__
     lower = detail.lower()
+    if language == "fr":
+        if isinstance(exc, (TimeoutError, asyncio.TimeoutError)):
+            hint = "Délai dépassé : rapprochez le Flipper, ouvrez TransTheFlip et confirmez l’appairage."
+        elif any(word in lower for word in ("pair", "auth", "denied", "access", "0x80070005")):
+            hint = "Appairage refusé : confirmez le code sur le Flipper. Si nécessaire, supprimez l’ancien appairage Windows puis recommencez."
+        elif any(word in lower for word in ("not found", "not available", "unreachable")):
+            hint = "Appareil ou service introuvable : activez le Bluetooth, ouvrez TransTheFlip sur le Flipper et relancez le scan."
+        else:
+            hint = "Vérifiez le Bluetooth, ouvrez TransTheFlip et fermez les autres clients Bluetooth avant de réessayer."
+        return f"{hint}\nDétail : {detail}"
     if isinstance(exc, (TimeoutError, asyncio.TimeoutError)):
-        hint = "Délai dépassé : rapprochez le Flipper, ouvrez TransTheFlip et confirmez l’appairage."
+        hint = "Timed out: move the Flipper closer, open TransTheFlip, and confirm pairing."
     elif any(word in lower for word in ("pair", "auth", "denied", "access", "0x80070005")):
-        hint = "Appairage refusé : confirmez le code sur le Flipper. Si nécessaire, supprimez l’ancien appairage Windows puis recommencez."
+        hint = "Pairing was refused: confirm the code on the Flipper. If needed, remove the old Windows pairing and try again."
     elif any(word in lower for word in ("not found", "not available", "unreachable")):
-        hint = "Appareil ou service introuvable : activez le Bluetooth, ouvrez TransTheFlip sur le Flipper et relancez Scan."
+        hint = "Device or service not found: enable Bluetooth, open TransTheFlip on the Flipper, and scan again."
     else:
-        hint = "Vérifiez le Bluetooth, ouvrez TransTheFlip et fermez les autres clients Bluetooth avant de réessayer."
-    return f"{hint}\nDétail : {detail}"
+        hint = "Check Bluetooth, open TransTheFlip, and close other Bluetooth clients before trying again."
+    return f"{hint}\nDetails: {detail}"

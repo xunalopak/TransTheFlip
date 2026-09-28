@@ -51,6 +51,12 @@ with patch.object(trans_gui, "BleWorker", return_value=Mock()), patch.object(
         app.entry.delete("1.0", "end")
         app._restore_history("1. first")
         assert app.entry.get("1.0", "end-1c") == "first\nsecond"
+        app._on_language_change("English")
+        assert app.send_btn.cget("text") == "Send"
+        assert app.disconnect_btn.cget("text") == "Disconnect"
+        app._on_language_change("Français")
+        assert app.send_btn.cget("text") == "Envoyer"
+        assert app.disconnect_btn.cget("text") == "Déconnecter"
         app.update()
         print("Real Tk layout, multiline editor, progress and history checks passed")
     finally:

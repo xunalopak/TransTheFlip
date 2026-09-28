@@ -70,8 +70,8 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(load_last_device(path))
             path.write_text("broken")
             self.assertIsNone(load_last_device(path))
-        self.assertIn("Délai dépassé", bluetooth_diagnostic(TimeoutError()))
-        self.assertIn("Appairage refusé", bluetooth_diagnostic(RuntimeError("Access denied")))
+        self.assertIn("Timed out", bluetooth_diagnostic(TimeoutError()))
+        self.assertIn("Pairing was refused", bluetooth_diagnostic(RuntimeError("Access denied")))
 
     async def test_editor_preserved_and_history_after_success_only(self):
         app = SimpleNamespace(

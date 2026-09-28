@@ -174,11 +174,11 @@ async def interactive_loop(client: BleakClient) -> None:
     try:
         ready = await asyncio.wait_for(_status_queue.get(), 5)
     except asyncio.TimeoutError:
-        raise RuntimeError("Installez et ouvrez la nouvelle application Flipper (protocole TTF1).") from None
+        raise RuntimeError("Install and open the latest Flipper app (TTF1 protocol).") from None
     max_bytes = peer_capacity(ready)
     if max_bytes is None:
-        raise RuntimeError("Flipper occupé ou incompatible : " + ready)
-    print(f"Capacité du Flipper : {max_bytes} octets, tags compris.")
+        raise RuntimeError("Flipper is busy or incompatible: " + ready)
+    print(f"Flipper capacity: {max_bytes} bytes, including tags.")
 
     while True:
         try:
