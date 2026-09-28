@@ -7,12 +7,16 @@
 #include <string.h>
 
 #define TTF_TEXT_BUFFER_SIZE 4097 // 4096 payload bytes plus the NUL terminator
+#define TTF_MAX_TEXT_BYTES 65536
+#define TTF_RX_CHUNK_SIZE 256
 #define TTF_RX_TIMEOUT_MS 5000
 
 typedef enum {
     TtfRxMore, TtfRxHello, TtfRxComplete, TtfRxProtocol, TtfRxTooLong,
-    TtfRxChecksum, TtfRxUnsupported,
+    TtfRxChecksum, TtfRxUnsupported, TtfRxExecute, TtfRxStorage,
 } TtfRxResult;
+
+typedef bool (*TtfRxSink)(void* context, const uint8_t* data, size_t length);
 
 typedef struct {
     char header[32];
@@ -22,10 +26,20 @@ typedef struct {
     size_t expected;
     uint32_t checksum;
     uint32_t crc;
+    uint8_t chunk[TTF_RX_CHUNK_SIZE];
+    size_t chunk_len;
+    TtfRxSink sink;
+    void* sink_context;
+    bool streaming;
 } TtfReceiver;
 
 static inline void ttf_rx_reset(TtfReceiver* rx) {
     memset(rx, 0, sizeof(*rx));
+}
+
+static inline void ttf_rx_set_sink(TtfReceiver* rx, TtfRxSink sink, void* context) {
+    rx->sink = sink;
+    rx->sink_context = context;
 }
 
 // Expand control characters for a readable, scrollable preview without allocating
@@ -59,24 +73,45 @@ static inline TtfRxResult ttf_rx_feed(TtfReceiver* rx, uint8_t byte) {
             ttf_rx_reset(rx);
             return TtfRxHello;
         }
+        if(strcmp(rx->header, "TTFEXEC") == 0) {
+            ttf_rx_reset(rx);
+            return TtfRxExecute;
+        }
         unsigned length = 0, crc = 0;
         int end = 0;
         if(sscanf(rx->header, "TTF1 %5u %8x%n", &length, &crc, &end) != 2 ||
            end == 0 || rx->header[end] != '\0' || length == 0)
             return TtfRxProtocol;
-        if(length >= TTF_TEXT_BUFFER_SIZE) return TtfRxTooLong;
+        if(length > TTF_MAX_TEXT_BYTES) return TtfRxTooLong;
         rx->expected = length;
         rx->checksum = crc;
         rx->crc = 0xffffffff;
+        rx->streaming = length >= TTF_TEXT_BUFFER_SIZE;
         return TtfRxMore;
     }
     if(byte != '\n' && byte != '\r' && byte != '\t' && (byte < 32 || byte > 126))
         return TtfRxUnsupported;
-    rx->text[rx->length++] = (char)byte;
+    if(rx->streaming) {
+        rx->chunk[rx->chunk_len++] = byte;
+        if(rx->chunk_len == sizeof(rx->chunk)) {
+            if(!rx->sink || !rx->sink(rx->sink_context, rx->chunk, rx->chunk_len))
+                return TtfRxStorage;
+            rx->chunk_len = 0;
+        }
+    } else {
+        rx->text[rx->length] = (char)byte;
+    }
+    rx->length++;
     rx->crc ^= byte;
     for(unsigned bit = 0; bit < 8; bit++)
         rx->crc = (rx->crc >> 1) ^ (0xedb88320u & (0u - (rx->crc & 1u)));
     if(rx->length != rx->expected) return TtfRxMore;
-    rx->text[rx->length] = '\0';
+    if(rx->streaming) {
+        if(rx->chunk_len && (!rx->sink || !rx->sink(rx->sink_context, rx->chunk, rx->chunk_len)))
+            return TtfRxStorage;
+        rx->chunk_len = 0;
+    } else {
+        rx->text[rx->length] = '\0';
+    }
     return (rx->crc ^ 0xffffffffu) == rx->checksum ? TtfRxComplete : TtfRxChecksum;
 }

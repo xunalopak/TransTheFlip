@@ -7,6 +7,7 @@
 
 Envoie du texte depuis un PC maître vers un Flipper Zero via Bluetooth LE.
 Le Flipper le tape automatiquement via USB HID sur le PC cible.
+Le client PC existe en ligne de commande et en interface graphique Windows.
 
 ```
 [PC Maître] ──BLE NUS──▶ [Flipper Zero] ──USB HID──▶ [PC Cible]
@@ -19,9 +20,10 @@ Le Flipper le tape automatiquement via USB HID sur le PC cible.
 2. Lance l'app TransTheFlip sur le Flipper
 3. **Appaire** le Flipper avec le **PC maître** (Windows) — voir ci-dessous.
    Indispensable : les caractéristiques BLE sont protégées par authentification.
-4. Démarre `trans_client.py` sur le **PC maître**
+4. Démarre `TransTheFlip-GUI.exe` ou `trans_client.py` sur le **PC maître**
 5. Saisis ton texte dans le client — il arrive sur l'écran du Flipper
-6. Appuie sur **OK** (bouton central) → le Flipper tape le texte sur le PC cible
+6. Appuie sur **OK** (bouton central), ou clique sur **Exécuter sur le Flipper**
+   dans le GUI → le Flipper tape le texte sur le PC cible
 7. Appuie sur **Retour** pour annuler
 
 > ⚠️ **Appairage obligatoire.** Le service serial du Flipper exige une liaison
@@ -70,9 +72,7 @@ Si le PC cible est configuré en **AZERTY**, les caractères spéciaux
 **Solution :** bascule temporairement le PC cible en QWERTY
 (Windows : `Win+Espace` pour changer de layout) avant d'envoyer.
 
-> Support AZERTY natif prévu : il suffira d'ajouter une table
-> `azerty_hid_table[95]` dans `trans_the_flip_hid.c` et un paramètre
-> de sélection de layout.
+Le Flipper peut charger les layouts BadUSB `.kl` depuis `/ext/badusb/assets/layouts`.
 
 ## Prérequis
 
@@ -85,6 +85,8 @@ Si le PC cible est configuré en **AZERTY**, les caractères spéciaux
 - Python ≥ 3.9
 - `pip install -r pc_client/requirements.txt`
 - Flipper **appairé** au préalable (Paramètres > Bluetooth et appareils)
+- Limite : **65 536 octets ASCII**, balises comprises, avec le FAP v2.2.0.
+  Les anciens FAP annoncent automatiquement leur capacité plus réduite.
 
 ## Build & Installation (Flipper)
 
@@ -133,6 +135,11 @@ python trans_client.py
 > ✅  Flipper : texte envoyé avec succès
 ```
 
+Le GUI possède les boutons **Send**, **Exécuter sur le Flipper** et **Déconnecter**.
+Send transfère et vérifie le texte ; l'exécution reste séparée pour éviter une frappe
+accidentelle. Au-delà de 4 096 octets, le texte est stocké temporairement sur la carte
+SD du Flipper puis supprimé après l'envoi ou l'annulation.
+
 ## Structure du projet
 
 ```
@@ -156,7 +163,8 @@ Le Flipper n'expose **pas** le NUS standard mais son propre service serial :
 - **RX** (PC→Flipper, Write) : `19ed82ae-ed21-4c9d-4145-228e62fe0000`
 - **TX** (Flipper→PC, Indicate) : `19ed82ae-ed21-4c9d-4145-228e61fe0000`
 - Terminateur de message : `\n` (newline)
-- Messages de statut Flipper→PC : `RECV`, `OK`, `ERR`, `CANCEL`
+- Messages de statut Flipper→PC : `READY`, `RECV`, `WAIT_USB`, `SENDING`, `PROGRESS`,
+  `OK`, `ERR`, `CANCEL`
 
 > 🔐 **Authentification requise.** Les caractéristiques RX/TX sont déclarées
 > `ATTR_PERMISSION_AUTHEN` côté firmware : la liaison doit être **appairée et
@@ -167,12 +175,12 @@ Le Flipper n'expose **pas** le NUS standard mais son propre service serial :
 ### USB HID
 - Le Flipper bascule en mode **clavier USB HID** au démarrage de l'app
 - L'envoi se fait dans un thread séparé pour garder l'UI réactive
-- Délai de 12 ms entre chaque frappe (anti-perte de caractères)
+- Délai configurable de 8 à 250 ms après chaque frappe, avec maintien de touche de 12 ms
 - La config USB d'origine est restaurée à la fermeture
 
 ### Machine d'états
 ```
-WaitingBT → Connected → TextReceived → Sending → Done → Connected
+WaitingBT → Connected → TextReceived → WaitingUSB → Sending → Done → Connected
                 ↑____________________________________________↑
 ```
 

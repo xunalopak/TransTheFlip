@@ -1,5 +1,10 @@
 # Mise à jour du client PC et du Flipper
 
+**Nouveauté v2.2.0 :** les textes de plus de 4 096 octets sont stockés dans un
+fichier temporaire sur la carte SD, avec une limite de **65 536 octets ASCII**.
+Le GUI ajoute **Exécuter sur le Flipper** : après le transfert, le bouton lance la
+frappe sans appuyer sur OK. Le bouton OK physique reste disponible.
+
 **Nouveauté v2.1.0 :** jusqu'à **4 096 octets ASCII par envoi**, tags compris.
 Mettre à jour le FAP **et** le client PC pour profiter de cette capacité.
 Le nouveau client détecte la limite du Flipper : avec un ancien FAP v2.0.x,
@@ -63,7 +68,9 @@ Le client refuse l'envoi tant que l'application Flipper n'a pas confirmé sa ver
 - L'historique garde jusqu'à 10 textes en RAM, dans un budget d'environ 8 Kio
   (soit deux textes à la taille maximale). Les plus anciens sont retirés si nécessaire.
 
-La limite est de **4 096 octets, tags compris**. Le clavier existant accepte l'ASCII,
+La limite est de **65 536 octets, tags compris** avec le FAP v2.2.0. Les textes
+au-delà de 4 096 octets utilisent un fichier temporaire sur la SD et sont supprimés
+à la fin. Le clavier existant accepte l'ASCII,
 les tabulations et les retours à la ligne. Les caractères non pris en charge sont
 refusés explicitement. Le sélecteur de layout existant reste accessible avec Gauche.
 

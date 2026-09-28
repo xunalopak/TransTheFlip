@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 #include "trans_the_flip_hid.h"
+#include "trans_the_flip_protocol.h"
 
 #include <furi.h>
 #include <furi_hal.h>
@@ -539,4 +540,63 @@ bool ttf_hid_send_string(const char* text, size_t len) {
 
     furi_hal_hid_kb_release_all();
     return send_active();
+}
+
+bool ttf_hid_send_file(const char* path, size_t len) {
+    if(!path || len == 0) return false;
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    File* file = storage_file_alloc(storage);
+    if(!storage || !file || !storage_file_open(file, path, FSAM_READ, FSOM_OPEN_EXISTING)) {
+        if(file) storage_file_free(file);
+        if(storage) furi_record_close(RECORD_STORAGE);
+        return false;
+    }
+
+    uint8_t buffer[TTF_RX_CHUNK_SIZE];
+    char tag[31] = {0};
+    size_t tag_len = 0;
+    size_t offset = 0;
+    bool in_tag = false;
+    while(offset < len && send_active()) {
+        size_t want = len - offset;
+        if(want > sizeof(buffer)) want = sizeof(buffer);
+        size_t count = storage_file_read(file, buffer, want);
+        if(count == 0) break;
+        for(size_t i = 0; i < count && send_active(); i++) {
+            char c = (char)buffer[i];
+            if(in_tag) {
+                if(c == ']') {
+                    if(tag_len > 0 && tag_len < sizeof(tag)) {
+                        tag[tag_len] = '\0';
+                        handle_tag(tag);
+                    } else if(tag_len == 0) {
+                        send_ascii_char('[');
+                    }
+                    in_tag = false;
+                    tag_len = 0;
+                } else if(tag_len < sizeof(tag) - 1) {
+                    tag[tag_len++] = c;
+                } else {
+                    tag_len++;
+                }
+            } else if(c == '[') {
+                in_tag = true;
+                tag_len = 0;
+            } else {
+                send_ascii_char(c);
+            }
+            atomic_store(&s_progress, offset + i + 1);
+        }
+        offset += count;
+        if(count < want) break;
+    }
+    if(in_tag && send_active()) {
+        send_ascii_char('[');
+        for(size_t i = 0; i < tag_len && i < sizeof(tag) - 1; i++) send_ascii_char(tag[i]);
+    }
+    storage_file_close(file);
+    storage_file_free(file);
+    furi_record_close(RECORD_STORAGE);
+    furi_hal_hid_kb_release_all();
+    return offset == len && send_active();
 }

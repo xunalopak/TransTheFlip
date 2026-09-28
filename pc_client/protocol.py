@@ -4,7 +4,8 @@ import zlib
 import re
 
 RX_UUID = "19ed82ae-ed21-4c9d-4145-228e62fe0000"
-MAX_TEXT_BYTES = 4096
+EXECUTE_COMMAND = b"TTFEXEC\n"
+MAX_TEXT_BYTES = 65536
 CHUNK_SIZE = 20
 
 STATUS_TEXT = {
@@ -22,6 +23,7 @@ STATUS_TEXT = {
     "ERR:CHAR": "Caractère non pris en charge par le clavier du Flipper.",
     "ERR:BUSY": "Flipper occupé : terminez ou annulez l’envoi sur le Flipper.",
     "ERR:MEMORY": "Mémoire insuffisante sur le Flipper.",
+    "ERR:STORAGE": "Erreur de lecture/écriture sur la carte SD du Flipper.",
 }
 
 
@@ -44,8 +46,8 @@ class NotificationLines:
 
 def peer_capacity(message):
     """Read the firmware limit; retain compatibility with 255-byte Flipper apps."""
-    match = re.fullmatch(r"READY:1:([1-9][0-9]{0,4})", message)
-    if match and int(match[1]) <= 65535:
+    match = re.fullmatch(r"READY:1:([1-9][0-9]{0,5})", message)
+    if match and int(match[1]) <= 999999:
         return min(int(match[1]), MAX_TEXT_BYTES)
     return None
 

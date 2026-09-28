@@ -7,6 +7,7 @@
 
 Send text from a master PC to a Flipper Zero over Bluetooth LE.
 The Flipper automatically types it as USB HID keystrokes on the target PC.
+The PC client supports both a command-line mode and a Windows GUI.
 
 ```
 [Master PC] ──BLE NUS──▶ [Flipper Zero] ──USB HID──▶ [Target PC]
@@ -19,9 +20,10 @@ The Flipper automatically types it as USB HID keystrokes on the target PC.
 2. Launch the TransTheFlip app on the Flipper
 3. **Pair** the Flipper with the **master PC** (Windows) — see below.
    Required: BLE characteristics are protected by authentication.
-4. Start `trans_client.py` on the **master PC**
+4. Start `TransTheFlip-GUI.exe` or `trans_client.py` on the **master PC**
 5. Type your text in the client — it appears on the Flipper screen
-6. Press **OK** (center button) → the Flipper types the text on the target PC
+6. Press **OK** (center button), or click **Exécuter sur le Flipper** in the GUI
+   → the Flipper types the text on the target PC
 7. Press **Back** to cancel
 
 > ⚠️ **Pairing is mandatory.** The Flipper serial service requires an encrypted,
@@ -69,9 +71,7 @@ characters (`@`, `&`, accented chars, etc.) will be wrong.
 **Workaround:** temporarily switch the target PC to QWERTY
 (Windows: `Win+Space` to cycle layouts) before sending.
 
-> Native AZERTY support is planned: it requires adding an
-> `azerty_hid_table[95]` array in `trans_the_flip_hid.c` and a layout
-> selection parameter.
+The Flipper can load BadUSB `.kl` layouts from `/ext/badusb/assets/layouts`.
 
 ## Requirements
 
@@ -84,6 +84,8 @@ characters (`@`, `&`, accented chars, etc.) will be wrong.
 - Python ≥ 3.9
 - `pip install -r pc_client/requirements.txt`
 - Flipper **paired** beforehand (Settings > Bluetooth & devices)
+- Text limit: **65,536 ASCII bytes**, tags included, with the matching v2.2.0 FAP.
+  Older FAPs advertise their smaller capacity automatically.
 
 ## Build & Install (Flipper)
 
@@ -132,6 +134,9 @@ python trans_client.py
 > ✅  Flipper: text sent successfully
 ```
 
+The GUI executable has **Send**, **Exécuter sur le Flipper** and **Déconnecter**
+buttons. Send transfers and verifies the text; execution remains a separate action+so a long or sensitive command is never typed accidentally. Texts over 4,096 bytes+are temporarily stored on the Flipper SD card and removed after completion or cancel.
+
 ## Project structure
 
 ```
@@ -155,7 +160,8 @@ The Flipper does **not** expose the standard NUS but its own serial service:
 - **RX** (PC→Flipper, Write): `19ed82ae-ed21-4c9d-4145-228e62fe0000`
 - **TX** (Flipper→PC, Indicate): `19ed82ae-ed21-4c9d-4145-228e61fe0000`
 - Message terminator: `\n` (newline)
-- Flipper→PC status messages: `RECV`, `OK`, `ERR`, `CANCEL`
+- Flipper→PC status messages: `READY`, `RECV`, `WAIT_USB`, `SENDING`, `PROGRESS`,
+  `OK`, `ERR`, `CANCEL`
 
 > 🔐 **Authentication required.** The RX/TX characteristics are declared
 > `ATTR_PERMISSION_AUTHEN` in the firmware: the link must be **paired and
@@ -170,12 +176,12 @@ The Flipper does **not** expose the standard NUS but its own serial service:
 ### USB HID
 - The Flipper switches to **USB HID keyboard** mode at app startup
 - Keystrokes are sent in a separate thread to keep the UI responsive
-- 12 ms delay between each keystroke (prevents character drops)
+- 8–250 ms configurable delay after each keystroke, plus a 12 ms key hold
 - Original USB config is restored on exit
 
 ### State machine
 ```
-WaitingBT → Connected → TextReceived → Sending → Done → Connected
+WaitingBT → Connected → TextReceived → WaitingUSB → Sending → Done → Connected
                 ↑____________________________________________↑
 ```
 

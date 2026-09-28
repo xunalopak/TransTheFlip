@@ -275,8 +275,11 @@ void ttf_view_draw_callback(Canvas* canvas, void* context) {
     // Snapshot only the visible page; large texts must never go on the GUI stack.
     char preview[64] = {0};
     size_t preview_total = 0;
-    if(state == AppStateTextReceived)
+    if(state == AppStateTextReceived) {
         preview_total = ttf_preview(app->received_text, preview_offset, preview, sizeof(preview));
+        // Large SD-backed payloads keep only a fixed preview in RAM.
+        if(text_len > TTF_TEXT_BUFFER_SIZE - 1) preview_total = text_len;
+    }
     char err_copy[TTF_ERROR_MSG_SIZE];
     char layout_copy[TTF_LAYOUT_NAME_SIZE];
     strncpy(err_copy, app->error_msg, sizeof(err_copy) - 1);

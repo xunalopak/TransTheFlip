@@ -56,7 +56,7 @@ from trans_client import (
     FLIPPER_TX_CHAR_UUID,
     BLE_CHUNK_SIZE,
 )
-from protocol import NotificationLines, STATUS_TEXT, MAX_TEXT_BYTES, peer_capacity, encode_text, write_text, bluetooth_diagnostic
+from protocol import EXECUTE_COMMAND, RX_UUID, NotificationLines, STATUS_TEXT, MAX_TEXT_BYTES, peer_capacity, encode_text, write_text, bluetooth_diagnostic
 
 SETTINGS_PATH = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "TransTheFlip" / "settings.json"
 
@@ -151,6 +151,9 @@ class BleWorker:
 
     def send(self, text: str) -> None:
         self._submit(self._send(text))
+
+    def execute(self) -> None:
+        self._submit(self._execute())
 
     def shutdown(self) -> None:
         future = asyncio.run_coroutine_threadsafe(self._shutdown(), self._loop)
@@ -318,6 +321,20 @@ class BleWorker:
         finally:
             self._send_task = None
 
+    async def _execute(self) -> None:
+        client = self._client
+        if client is None or not client.is_connected:
+            self._emit("send_error", "Non connecté. Le texte est conservé.")
+            return
+        if not self._awaiting_result:
+            self._emit("log", "Aucun texte en attente sur le Flipper.")
+            return
+        try:
+            await client.write_gatt_char(RX_UUID, EXECUTE_COMMAND, response=True)
+            self._emit("log", "▶  Exécution demandée depuis le PC.")
+        except Exception as exc:  # noqa: BLE001
+            self._emit("send_error", f"Exécution impossible : {exc}")
+
     # ---- bleak callbacks (asyncio thread) ----
     def _on_notify(self, _characteristic: BleakGATTCharacteristic, data: bytearray) -> None:
         for msg in self._notifications.feed(data):
@@ -431,6 +448,11 @@ class App(ctk.CTk):
             entry_frame, text="Send", width=110, command=self._on_send, state="disabled"
         )
         self.send_btn.grid(row=0, column=1)
+        self.execute_btn = ctk.CTkButton(
+            entry_frame, text="Exécuter sur le Flipper", width=170,
+            command=self._on_execute, state="disabled",
+        )
+        self.execute_btn.grid(row=0, column=2, padx=(8, 0))
         self.history_menu = ctk.CTkOptionMenu(
             entry_frame, values=["Historique de la session"], command=self._restore_history,
         )
@@ -491,6 +513,7 @@ class App(ctk.CTk):
         self._transfer_stage = "idle"
         self.transfer_label.configure(text=message)
         self.send_btn.configure(state="normal" if self._connected else "disabled")
+        self.execute_btn.configure(state="disabled")
 
     def _set_status(self, text: str, color: str) -> None:
         self.status_label.configure(text=text, text_color=color)
@@ -521,6 +544,7 @@ class App(ctk.CTk):
         self._connected = False
         self.disconnect_btn.configure(state="disabled")
         self.send_btn.configure(state="disabled")
+        self.execute_btn.configure(state="disabled")
         self._set_status("● Disconnecting...", "#e0a955")
         self._worker.disconnect()
 
@@ -546,6 +570,13 @@ class App(ctk.CTk):
         self._log(f"→  {text}")
         self._worker.send(text)
         return "break"
+
+    def _on_execute(self) -> None:
+        if self._pending_text is None or self._transfer_stage != "RECV":
+            return
+        self.execute_btn.configure(state="disabled")
+        self.transfer_label.configure(text="Exécution demandée au Flipper…")
+        self._worker.execute()
 
     # ---- event pump (drains worker events on the Tk thread) ----
     def _poll_events(self) -> None:
@@ -599,6 +630,7 @@ class App(ctk.CTk):
             self.device_menu.configure(state="normal")
             self.disconnect_btn.configure(state="disabled")
             self.send_btn.configure(state="disabled")
+            self.execute_btn.configure(state="disabled")
             self._set_status("● Disconnected", "#e05555")
             if self._pending_text is not None:
                 self._finish_transfer("Connexion perdue ou fermée. Résultat non confirmé ; texte conservé.")
@@ -625,6 +657,10 @@ class App(ctk.CTk):
             self.transfer_label.configure(text=message)
             if msg in ("RECV", "SENDING"):
                 self.progress_bar.set(0)
+            if msg == "RECV" and self._pending_text is not None:
+                self.execute_btn.configure(state="normal")
+            elif msg == "SENDING":
+                self.execute_btn.configure(state="disabled")
             if msg == "OK":
                 if self._pending_text is not None:
                     text = self._pending_text

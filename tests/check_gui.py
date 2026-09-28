@@ -14,7 +14,7 @@ with patch.object(trans_gui, "BleWorker", return_value=Mock()), patch.object(
     try:
         app.geometry("740x650")
         app.update()
-        for widget in (app.entry, app.send_btn, app.disconnect_btn, app.history_menu, app.progress_bar):
+        for widget in (app.entry, app.send_btn, app.execute_btn, app.disconnect_btn, app.history_menu, app.progress_bar):
             assert widget.winfo_ismapped()
             right = widget.winfo_rootx() - app.winfo_rootx() + widget.winfo_width()
             bottom = widget.winfo_rooty() - app.winfo_rooty() + widget.winfo_height()
@@ -24,6 +24,9 @@ with patch.object(trans_gui, "BleWorker", return_value=Mock()), patch.object(
         app._connected = True
         app._on_send()
         app._worker.send.assert_called_once_with("first\nsecond")
+        app._handle_event("notify", "RECV")
+        app._on_execute()
+        app._worker.execute.assert_called_once()
         app._handle_event("send_error", "Simulated error")
         assert app.entry.get("1.0", "end-1c") == "first\nsecond"
         app._handle_event("capacity", 4096)

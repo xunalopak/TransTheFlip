@@ -21,6 +21,7 @@
 #include <furi_hal.h>
 #include <gui/gui.h>
 #include <input/input.h>
+#include <storage/storage.h>
 #include <stdatomic.h>
 #include "trans_the_flip_protocol.h"
 
@@ -36,6 +37,7 @@
 #define TTF_HISTORY_MAX       10     // nombre max d'entrées dans l'historique (RAM)
 #define TTF_HISTORY_BYTES     (2 * TTF_TEXT_BUFFER_SIZE)
 #define TTF_BT_EVENT_SIZE     256    // A BLE chunk, not a complete text
+#define TTF_PAYLOAD_PATH      "/ext/apps_data/trans_the_flip/payload.tmp"
 
 // ============================================================
 // Machine d'états
@@ -92,6 +94,9 @@ typedef struct {
     // Buffer texte reçu (accumulé depuis plusieurs paquets BLE)
     char   received_text[TTF_TEXT_BUFFER_SIZE];
     size_t text_len;
+    Storage* payload_storage;
+    File* payload_file;
+    bool payload_file_backed;
 
     TtfReceiver receiver;
     uint32_t rx_tick;

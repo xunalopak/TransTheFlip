@@ -19,7 +19,7 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
             self.assertLessEqual(len(data), 20)
             writes.append(data)
 
-        text = ("first\nsecond\t[ENTER]" * 250)[:MAX_TEXT_BYTES]
+        text = ("first\nsecond\t[ENTER]" * (MAX_TEXT_BYTES // 20 + 1))[:MAX_TEXT_BYTES]
         with patch("protocol.asyncio.sleep", new=AsyncMock()):
             await write_text(SimpleNamespace(write_gatt_char=write), text, progress.append)
         header, payload = b"".join(writes).split(b"\n", 1)
@@ -29,21 +29,29 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(int(crc, 16), zlib.crc32(payload))
         self.assertEqual(payload.decode(), text)
         self.assertEqual(progress[-1], 1)
-        self.assertEqual(len(payload), 4096)
+        self.assertEqual(len(payload), MAX_TEXT_BYTES)
         self.assertEqual(len(encode_text("x" * 256).split(b"\n", 1)[1]), 256)
-        for invalid in ("", "x" * 4097, "é", "a\0b"):
+        for invalid in ("", "x" * 65537, "é", "a\0b"):
             with self.assertRaises(ValueError):
                 encode_text(invalid)
 
     async def test_negotiated_capacity(self):
-        for advertised, expected in (("255", 255), ("4096", 4096), ("65535", 4096)):
+        for advertised, expected in (("255", 255), ("4096", 4096), ("65536", 65536), ("99999", 65536)):
             self.assertEqual(peer_capacity("READY:1:" + advertised), expected)
-        for invalid in ("READY:1:0", "READY:2:4096", "READY:1:-1", "READY:1:999999", "RECV"):
+        for invalid in ("READY:1:0", "READY:2:4096", "READY:1:-1", "READY:1:1000000", "RECV"):
             self.assertIsNone(peer_capacity(invalid))
         client = SimpleNamespace(write_gatt_char=AsyncMock())
         with self.assertRaisesRegex(ValueError, "maximum 255"):
             await write_text(client, "x" * 256, max_bytes=255)
         client.write_gatt_char.assert_not_called()
+
+    async def test_execute_button_requests_flipper_action(self):
+        app = SimpleNamespace(
+            _pending_text="test", _transfer_stage="RECV", execute_btn=Mock(),
+            transfer_label=Mock(), _worker=Mock(),
+        )
+        App._on_execute(app)
+        app._worker.execute.assert_called_once_with()
 
     async def test_notifications_fragmentation(self):
         lines = NotificationLines()
@@ -68,7 +76,7 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
     async def test_editor_preserved_and_history_after_success_only(self):
         app = SimpleNamespace(
             entry=Mock(), _pending_text=None, _connected=True, _history=[],
-            _worker=Mock(), send_btn=Mock(), progress_bar=Mock(), transfer_label=Mock(),
+            _worker=Mock(), send_btn=Mock(), execute_btn=Mock(), progress_bar=Mock(), transfer_label=Mock(),
             history_menu=Mock(), _log=Mock(),
             _max_text_bytes=MAX_TEXT_BYTES,
         )

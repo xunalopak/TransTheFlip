@@ -29,6 +29,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+static bool payload_sink(void* context, const uint8_t* data, size_t length);
+static bool payload_open(TransTheFlipApp* app);
+static void payload_close(TransTheFlipApp* app, bool remove_file);
+static bool payload_load_preview(TransTheFlipApp* app);
+
 // ============================================================
 // Chemins pour le layout clavier
 // ============================================================
@@ -43,7 +48,9 @@ static int32_t send_thread_fn(void* raw_ctx) {
     TransTheFlipApp* app = raw_ctx;
 
     // The event loop leaves received_text untouched until this thread is joined.
-    bool ok = ttf_hid_send_string(app->received_text, app->text_len);
+    bool ok = app->payload_file_backed ?
+        ttf_hid_send_file(TTF_PAYLOAD_PATH, app->text_len) :
+        ttf_hid_send_string(app->received_text, app->text_len);
 
     AppEvent ev;
     ev.type = ttf_hid_cancelled() ? EventTypeSendCancelled :
@@ -64,6 +71,7 @@ static TransTheFlipApp* app_alloc(void) {
     app->state = AppStateWaitingBT;
     app->key_delay_ms = 8;
     atomic_init(&app->rx_overflow, false);
+    ttf_rx_set_sink(&app->receiver, payload_sink, app);
 
     // Queue d'événements
     app->event_queue = furi_message_queue_alloc(TTF_EVENT_QUEUE_DEPTH, sizeof(AppEvent));
@@ -92,6 +100,7 @@ static void app_free(TransTheFlipApp* app) {
         app->send_thread = NULL;
     }
 
+    payload_close(app, true);
     gui_remove_view_port(app->gui, app->view_port);
     furi_record_close(RECORD_GUI);
     view_port_free(app->view_port);
@@ -102,6 +111,61 @@ static void app_free(TransTheFlipApp* app) {
     for(size_t i = 0; i < app->history_count; i++) free(app->history[i]);
 
     free(app);
+}
+
+static bool payload_sink(void* context, const uint8_t* data, size_t length) {
+    TransTheFlipApp* app = context;
+    return app->payload_file && storage_file_write(app->payload_file, data, length) == length;
+}
+
+static bool payload_open(TransTheFlipApp* app) {
+    if(app->payload_file) return true;
+    app->payload_storage = furi_record_open(RECORD_STORAGE);
+    if(!app->payload_storage) return false;
+    storage_simply_mkdir(app->payload_storage, "/ext/apps_data/trans_the_flip");
+    app->payload_file = storage_file_alloc(app->payload_storage);
+    if(!app->payload_file || !storage_file_open(app->payload_file, TTF_PAYLOAD_PATH, FSAM_WRITE, FSOM_CREATE_ALWAYS)) {
+        payload_close(app, true);
+        return false;
+    }
+    app->payload_file_backed = true;
+    return true;
+}
+
+static void payload_close(TransTheFlipApp* app, bool remove_file) {
+    if(app->payload_file) {
+        storage_file_sync(app->payload_file);
+        storage_file_close(app->payload_file);
+        storage_file_free(app->payload_file);
+        app->payload_file = NULL;
+    }
+    if(app->payload_storage) {
+        if(remove_file) storage_simply_remove(app->payload_storage, TTF_PAYLOAD_PATH);
+        furi_record_close(RECORD_STORAGE);
+        app->payload_storage = NULL;
+    } else if(remove_file && app->payload_file_backed) {
+        Storage* storage = furi_record_open(RECORD_STORAGE);
+        if(storage) {
+            storage_simply_remove(storage, TTF_PAYLOAD_PATH);
+            furi_record_close(RECORD_STORAGE);
+        }
+    }
+    if(remove_file) app->payload_file_backed = false;
+}
+
+static bool payload_load_preview(TransTheFlipApp* app) {
+    if(!app->payload_file_backed) return true;
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    File* file = storage ? storage_file_alloc(storage) : NULL;
+    bool ok = storage && file && storage_file_open(file, TTF_PAYLOAD_PATH, FSAM_READ, FSOM_OPEN_EXISTING);
+    if(ok) {
+        size_t count = storage_file_read(file, app->received_text, TTF_TEXT_BUFFER_SIZE - 1);
+        app->received_text[count] = '\0';
+        storage_file_close(file);
+    }
+    if(file) storage_file_free(file);
+    if(storage) furi_record_close(RECORD_STORAGE);
+    return ok;
 }
 
 // ============================================================
@@ -217,10 +281,12 @@ static void open_layout_picker(TransTheFlipApp* app) {
 // Appel sous mutex.
 // ============================================================
 static void reset_text_buffer(TransTheFlipApp* app) {
+    payload_close(app, true);
     memset(app->received_text, 0, TTF_TEXT_BUFFER_SIZE);
     app->text_len = 0;
     app->preview_offset = 0;
     ttf_rx_reset(&app->receiver);
+    ttf_rx_set_sink(&app->receiver, payload_sink, app);
     app->rx_tick = 0;
 }
 
@@ -230,6 +296,7 @@ static AppState idle_state(TransTheFlipApp* app) {
 
 static void receive_error(TransTheFlipApp* app, const char* message, const char* status) {
     ttf_rx_reset(&app->receiver);
+    ttf_rx_set_sink(&app->receiver, payload_sink, app);
     app->rx_tick = 0;
     if(!app->send_thread) {
         reset_text_buffer(app);
@@ -352,38 +419,74 @@ int32_t trans_the_flip_app(void* p) {
                 furi_mutex_release(app->mutex);
                 ttf_bt_notify_ready();
                 furi_mutex_acquire(app->mutex, FuriWaitForever);
-                if(app->state != AppStateConnected) {
+                if(app->state != AppStateConnected && app->state != AppStateTextReceived) {
                     ttf_bt_send_status("ERR:BUSY\n");
                     break;
                 }
                 for(size_t i = 0; i < ev.text_len; i++) {
+                    if(app->receiver.streaming && !app->payload_file && !payload_open(app)) {
+                        receive_error(app, "SD write failed", "ERR:STORAGE\n");
+                        break;
+                    }
                     app->rx_tick = furi_get_tick();
                     TtfRxResult result = ttf_rx_feed(&app->receiver, (uint8_t)ev.text[i]);
                     if(result == TtfRxHello) {
                         app->rx_tick = 0;
                         char ready[32];
-                        snprintf(ready, sizeof(ready), "READY:1:%u\n", TTF_TEXT_BUFFER_SIZE - 1);
+                        snprintf(ready, sizeof(ready), "READY:1:%u\n", TTF_MAX_TEXT_BYTES);
                         ttf_bt_send_status(ready);
+                        ttf_rx_set_sink(&app->receiver, payload_sink, app);
+                    } else if(result == TtfRxExecute) {
+                        ttf_rx_set_sink(&app->receiver, payload_sink, app);
+                        if(app->state != AppStateTextReceived) {
+                            ttf_bt_send_status("ERR:BUSY\n");
+                        } else if(furi_hal_hid_is_connected()) {
+                            app->state = AppStateSending;
+                            furi_mutex_release(app->mutex);
+                            start_send(app);
+                            furi_mutex_acquire(app->mutex, FuriWaitForever);
+                        } else {
+                            app->state = AppStateWaitingUSB;
+                            app->usb_detect_tick = 0;
+                            ttf_bt_send_status("WAIT_USB\n");
+                        }
                     } else if(result == TtfRxComplete) {
+                        if(app->state != AppStateConnected) {
+                            ttf_rx_reset(&app->receiver);
+                            ttf_rx_set_sink(&app->receiver, payload_sink, app);
+                            ttf_bt_send_status("ERR:BUSY\n");
+                            break;
+                        }
                         if(i + 1 != ev.text_len) {
                             receive_error(app, "Extra data rejected", "ERR:PROTOCOL\n");
                             break;
                         }
                         app->text_len = app->receiver.length;
-                        memcpy(app->received_text, app->receiver.text, app->text_len + 1);
+                        if(app->receiver.streaming) {
+                            payload_close(app, false);
+                            if(!payload_load_preview(app)) {
+                                receive_error(app, "SD read failed", "ERR:STORAGE\n");
+                                break;
+                            }
+                        } else {
+                            memcpy(app->received_text, app->receiver.text, app->text_len + 1);
+                        }
                         app->preview_offset = 0;
                         app->state = AppStateTextReceived;
                         app->rx_tick = 0;
                         ttf_rx_reset(&app->receiver);
+                        ttf_rx_set_sink(&app->receiver, payload_sink, app);
                         ttf_bt_send_status("RECV\n");
                     } else if(result != TtfRxMore) {
                         receive_error(app,
                             result == TtfRxTooLong ? "Text too long" :
                             result == TtfRxChecksum ? "Incomplete/corrupt text" :
-                            result == TtfRxUnsupported ? "Unsupported character" : "Invalid protocol",
+                            result == TtfRxUnsupported ? "Unsupported character" :
+                            result == TtfRxStorage ? "SD storage error" : "Invalid protocol",
                             result == TtfRxTooLong ? "ERR:LENGTH\n" :
                             result == TtfRxChecksum ? "ERR:CHECKSUM\n" :
-                            result == TtfRxUnsupported ? "ERR:CHAR\n" : "ERR:PROTOCOL\n");
+                            result == TtfRxUnsupported ? "ERR:CHAR\n" :
+                            result == TtfRxStorage ? "ERR:STORAGE\n" : "ERR:PROTOCOL\n");
                         break;
                     }
                 }

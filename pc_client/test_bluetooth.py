@@ -105,7 +105,7 @@ class BluetoothTests(unittest.IsolatedAsyncioTestCase):
     async def test_gui_disconnect_states(self):
         app = SimpleNamespace(
             _connected=False, _busy=True, connect_btn=Mock(), disconnect_btn=Mock(),
-            send_btn=Mock(), scan_btn=Mock(), device_menu=Mock(),
+            send_btn=Mock(), execute_btn=Mock(), scan_btn=Mock(), device_menu=Mock(),
             _set_status=Mock(), _worker=Mock(),
             _dev_map={}, _pending_text=None,
         )

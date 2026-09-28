@@ -7,20 +7,29 @@
 #include <stdio.h>
 #include <string.h>
 
+struct File { int unused; };
 static unsigned elapsed, presses, releases, release_all;
 static unsigned cancel_after, unplug_after;
 static uint16_t last_key;
 static bool connected = true, fail_press;
+static const char* file_text;
+static size_t file_pos;
+static File fake_file;
 
 FuriHalUsbInterface usb_hid;
-void* furi_record_open(const char* record) { (void)record; return NULL; }
+void* furi_record_open(const char* record) { (void)record; return file_text ? (void*)1 : NULL; }
 void furi_record_close(const char* record) { (void)record; }
-File* storage_file_alloc(Storage* storage) { (void)storage; return NULL; }
+File* storage_file_alloc(Storage* storage) { (void)storage; return &fake_file; }
 bool storage_file_open(File* file, const char* path, int access, int mode) {
-    (void)file; (void)path; (void)access; (void)mode; return false;
+    (void)file; (void)path; (void)access; (void)mode; return file_text != NULL;
 }
 uint16_t storage_file_read(File* file, void* buffer, uint16_t length) {
-    (void)file; (void)buffer; (void)length; return 0;
+    (void)file;
+    size_t remaining = strlen(file_text) - file_pos;
+    if(remaining > length) remaining = length;
+    memcpy(buffer, file_text + file_pos, remaining);
+    file_pos += remaining;
+    return (uint16_t)remaining;
 }
 void storage_file_close(File* file) { (void)file; }
 void storage_file_free(File* file) { (void)file; }
@@ -48,6 +57,8 @@ static void reset(uint32_t delay) {
     elapsed = presses = releases = release_all = cancel_after = unplug_after = 0;
     connected = true;
     fail_press = false;
+    file_text = NULL;
+    file_pos = 0;
     ttf_hid_prepare(delay);
     ttf_hid_reset_layout();
 }
@@ -61,6 +72,12 @@ int main(void) {
     reset(100);
     assert(ttf_hid_send_string("ab", 2));
     assert(elapsed == 224);
+    file_text = "a[ENTER]b";
+    file_pos = 0;
+    reset(8);
+    file_text = "a[ENTER]b";
+    assert(ttf_hid_send_file("/ext/apps_data/trans_the_flip/payload.tmp", strlen(file_text)));
+    assert(presses == 3 && ttf_hid_progress() == strlen(file_text));
     char long_text[TTF_TEXT_BUFFER_SIZE];
     memset(long_text, 'x', sizeof(long_text) - 1);
     long_text[sizeof(long_text) - 1] = '\0';
