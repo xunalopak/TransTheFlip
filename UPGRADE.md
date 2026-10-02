@@ -1,5 +1,10 @@
 # Updating the PC client and Flipper app
 
+**New in v2.3.1:** TransTheFlip is now **DuckerTheFlipper**. The GUI, CLI,
+Flipper display name and release downloads use the new name. The README includes
+desktop screenshots. Protocol, saved settings and Flipper storage paths remain
+unchanged; this update does not require pairing again.
+
 **New in v2.3.0:** refreshed dark/orange GUI, custom logo and Windows icon,
 French/English interface and remote keyboard layout selection. Install both the
 new PC client and FAP to change the Flipper keyboard layout from the GUI.

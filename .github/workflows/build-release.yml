@@ -133,7 +133,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: DuckerTheFlipper ${{ github.ref_name }} — Desktop refresh & keyboard layouts
+          name: DuckerTheFlipper ${{ github.ref_name }} — New name, same features
           files: |
             artifacts/DuckerTheFlipper-${{ github.ref_name }}.fap
             artifacts/DuckerTheFlipper-GUI.exe
@@ -145,7 +145,17 @@ jobs:
             Previously named TransTheFlip. The TTF1 protocol, internal FAP identifier
             and saved settings remain unchanged for compatibility.
 
-            ## What's new in v2.3.0
+            ## What's new in v2.3.1
+
+            - TransTheFlip is now DuckerTheFlipper, including the repository,
+              desktop interface, CLI banner and Flipper app display name.
+            - Windows downloads are now DuckerTheFlipper-GUI.exe and DuckerTheFlipper-CLI.exe;
+              the Flipper release asset is DuckerTheFlipper-${{ github.ref_name }}.fap.
+            - Updated README with privacy-safe desktop and activity-log screenshots.
+            - Existing protocol, saved-device settings and Flipper storage paths are preserved.
+              This is a branding/documentation update, not a protocol change.
+
+            ## Included since v2.3.0
 
             - Refreshed desktop GUI: dark theme, orange accents, clearer sections,
               resizable text editor, prominent Send/Execute buttons and collapsible activity log.
