@@ -82,19 +82,6 @@ with patch.object(trans_gui, "BleWorker", return_value=Mock()), patch.object(
         app._insert_key("[ENTER]")
         assert "[ENTER]" in app.entry.get("1.0", "end-1c")
         app.update()
-        if "--screenshot" in sys.argv:
-            from PIL import ImageGrab
-            app.entry.delete("1.0", "end")
-            app.entry.insert("1.0", "Hello from DuckerTheFlipper!\n[DELAY:500][ENTER]")
-            app._handle_event("disconnected", None)
-            app._dev_map.clear()
-            app.device_var.set(app._tr("scan_first"))
-            app.lift()
-            app.update()
-            x, y = app.winfo_rootx(), app.winfo_rooty()
-            preview = Path(__file__).resolve().parents[1] / "build" / "gui-preview.png"
-            preview.parent.mkdir(parents=True, exist_ok=True)
-            ImageGrab.grab(bbox=(x, y, x + app.winfo_width(), y + app.winfo_height())).save(preview)
         print("Real Tk layout, multiline editor, progress and history checks passed")
     finally:
         app.destroy()
