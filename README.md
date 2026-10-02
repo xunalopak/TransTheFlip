@@ -10,6 +10,26 @@ Send text from a master PC to a Flipper Zero over Bluetooth LE.
 The Flipper automatically types it as USB HID keystrokes on the target PC.
 The PC client supports both a command-line mode and a Windows GUI.
 
+## Desktop preview
+
+The dark/orange interface keeps connection controls, keyboard layout and the
+multiline editor together. Screenshots use demonstration data only, with no
+live Bluetooth connection or personal device information.
+
+![DuckerTheFlipper desktop GUI with keyboard layout, multiline editor and quick keys](docs/screenshots/desktop.png)
+
+<details>
+<summary>Show the expandable activity log</summary>
+
+The activity log shows connection diagnostics and transfer messages without
+cluttering the editor when collapsed.
+
+![DuckerTheFlipper GUI with the activity log expanded](docs/screenshots/activity-log.png)
+
+</details>
+
+## Transfer overview
+
 ```
 [Master PC] ──BLE NUS──▶ [Flipper Zero] ──USB HID──▶ [Target PC]
  trans_client.py            DuckerTheFlipper.fap           (keyboard)
