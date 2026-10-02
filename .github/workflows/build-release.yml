@@ -98,7 +98,9 @@ jobs:
 
       # ── 4. GUI : TransTheFlip-GUI.exe (fenêtré, embarque customtkinter) ──
       - name: Test PC client
-        run: python -m unittest discover -s pc_client
+        run: |
+          python -m unittest discover -s pc_client
+          python tests/check_gui.py
 
       # ── 5. CLI : TransTheFlip-CLI.exe (console) ──────────────────────────
       - name: Build Windows executables
@@ -131,27 +133,48 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          name: TransTheFlip ${{ github.ref_name }} — Desktop refresh & keyboard layouts
           files: |
             artifacts/TransTheFlip-${{ github.ref_name }}.fap
             artifacts/TransTheFlip-GUI.exe
             artifacts/TransTheFlip-CLI.exe
           generate_release_notes: true
           body: |
-            ## Textes longs v2.2.0
-            Jusqu’à 65 536 octets ASCII par envoi, tags compris.
-            Au-delà de 4 096 octets, le FAP utilise un fichier temporaire sur la carte SD.
-            Le GUI ajoute Exécuter sur le Flipper ; OK physique reste disponible.
-            Mettre à jour le FAP et le client PC pour profiter de la nouvelle capacité.
-            Les correctifs de connexion Bluetooth et d’affichage v2.0.1/v2.0.2 sont inclus.
+            ## What's new in v2.3.0
 
-            ## Depuis une version 1.x : mise à jour PC + Flipper obligatoire
-            Installer le nouveau FAP et le nouveau client ensemble : le protocole TTF1
-            vérifie la longueur et le CRC de chaque texte avant confirmation.
+            - Refreshed desktop GUI: dark theme, orange accents, clearer sections,
+              resizable text editor, prominent Send/Execute buttons and collapsible activity log.
+            - Custom duck-and-dolphin logo in the GUI, window and Windows executable icon.
+            - French/English GUI language selector; English CLI and documentation.
+            - Select the Flipper keyboard layout from the connected GUI: built-in QWERTY US,
+              or fr-FR.kl, de-DE.kl and en-US.kl from the Flipper SD card.
+            - Keyboard changes are confirmed by the Flipper and blocked during a pending transfer.
+              Missing layout files preserve the previous selection.
+            - Fixed the Bluetooth handshake to deliver protocol and layout information together.
 
-            - PC : dernier Flipper mémorisé, diagnostics Bluetooth, éditeur multiligne,
-              historique de session, suivi du transfert et de la frappe.
-            - Flipper : états Bluetooth/USB séparés, aperçu défilant, progression,
-              arrêt avec Retour et délai de frappe réglable avec Droite.
-            - Limite : 65 536 octets ASCII, tags compris ; tabulations et retours à la ligne acceptés.
-            - Tests automatisés Python et C ; les scénarios matériels restent à vérifier sur votre configuration.
+            ## Included transfer features
+
+            - Up to 65,536 ASCII bytes per transfer, including tags, tabs and line breaks.
+              Text over 4,096 bytes uses a temporary file on the Flipper SD card.
+            - Length and CRC32 verification before execution. Sending and execution remain
+              separate actions; use Execute on Flipper or the physical OK button to start typing.
+            - Transfer/typing progress, session-only history, remembered device, Bluetooth
+              diagnostics and a Disconnect button. Text is retained after an error.
+            - Separate Bluetooth/USB status, scrollable preview, adjustable typing delay and
+              cancellation using Back on the Flipper.
+
+            ## Installation
+
+            Update both the PC client and Flipper FAP for remote keyboard selection.
+            Run TransTheFlip-GUI.exe or TransTheFlip-CLI.exe on Windows (Python is not required).
+            Install the FAP on your Flipper, open TransTheFlip and connect from the PC.
+            External .kl layouts must exist in /ext/badusb/assets/layouts and match the target OS.
+
+            ## Verification
+
+            Python and C checks cover Bluetooth lifecycle, framing/CRC, transfer exclusion,
+            keyboard commands, HID cancellation and USB failures. Real Tk checks cover both
+            languages, small windows and the activity log. Hardware BLE layout/restore,
+            missing-file and busy-state checks passed without executing USB keystrokes.
+            Physical typing and macOS behavior still require verification on your target machine.
           fail_on_unmatched_files: true

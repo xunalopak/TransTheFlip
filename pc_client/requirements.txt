@@ -1,2 +1,3 @@
 bleak>=1.0.0
 customtkinter>=5.2.0  # GUI only (trans_gui.py); the CLI needs only bleak
+pillow>=10.0.0  # GUI logo and Windows icon generation

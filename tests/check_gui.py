@@ -12,6 +12,10 @@ with patch.object(trans_gui, "BleWorker", return_value=Mock()), patch.object(
 ):
     app = trans_gui.App()
     try:
+        app.after(300, app.quit)
+        app.mainloop()
+        if sys.platform == "win32":
+            assert app._iconbitmap_method_called
         assert not app._log_visible
         for language in ("English", "Français"):
             app._on_language_change(language)
@@ -22,7 +26,7 @@ with patch.object(trans_gui, "BleWorker", return_value=Mock()), patch.object(
                         app._toggle_log()
                     app.update()
                     assert bool(app.log_box.winfo_ismapped()) == visible
-                    for widget in (app.entry, app.send_btn, app.execute_btn, app.disconnect_btn,
+                    for widget in (app.logo_label, app.entry, app.send_btn, app.execute_btn, app.disconnect_btn,
                                    app.history_menu, app.layout_menu, app.progress_bar, app.log_toggle):
                         assert widget.winfo_ismapped(), (size, visible, widget)
                         right = widget.winfo_rootx() - app.winfo_rootx() + widget.winfo_width()

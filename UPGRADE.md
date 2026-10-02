@@ -1,6 +1,10 @@
 # Updating the PC client and Flipper app
 
-**New in v2.2.0:** texts over 4,096 bytes are stored in a temporary file on the
+**New in v2.3.0:** refreshed dark/orange GUI, custom logo and Windows icon,
+French/English interface and remote keyboard layout selection. Install both the
+new PC client and FAP to change the Flipper keyboard layout from the GUI.
+
+**Included since v2.2.0:** texts over 4,096 bytes are stored in a temporary file on the
 SD card, with a limit of **65,536 ASCII bytes**. The GUI adds **Execute on
 Flipper**: after transfer, the button starts typing without pressing OK. The
 physical OK button remains available.

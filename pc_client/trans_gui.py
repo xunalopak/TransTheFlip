@@ -32,6 +32,7 @@ import queue
 import asyncio
 import threading
 import json
+from PIL import Image
 from pathlib import Path
 from typing import Optional
 
@@ -591,15 +592,25 @@ class App(ctk.CTk):
 
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=24, pady=(16, 10))
-        header.grid_columnconfigure(0, weight=1)
+        assets = Path(__file__).resolve().parent / "assets"
+        with Image.open(assets / "logo.png") as source:
+            logo_image = source.copy()
+        self.logo = ctk.CTkImage(light_image=logo_image, dark_image=logo_image, size=(48, 48))
+        self.logo_label = ctk.CTkLabel(header, text="", image=self.logo)
+        self.logo_label.grid(row=0, column=0, rowspan=2, padx=(0, 12))
+        header.grid_columnconfigure(0, weight=0)
+        header.grid_columnconfigure(1, weight=1)
+        # Calling CTk's setter prevents its delayed default icon from replacing ours.
+        if sys.platform == "win32":
+            self.iconbitmap(str(assets / "app.ico"))
         ctk.CTkLabel(header, text="TransTheFlip", text_color=accent,
-                     font=ctk.CTkFont(size=26, weight="bold"), anchor="w").grid(row=0, column=0, sticky="w")
+                     font=ctk.CTkFont(size=26, weight="bold"), anchor="w").grid(row=0, column=1, sticky="w")
         self.subtitle_label = ctk.CTkLabel(header, text=self._tr("subtitle"), text_color="#A5AFBE", anchor="w")
-        self.subtitle_label.grid(row=1, column=0, sticky="w")
+        self.subtitle_label.grid(row=1, column=1, sticky="w")
         self.language_menu = ctk.CTkOptionMenu(header, values=["Français", "English"],
                                                width=115, command=self._on_language_change, **menu_style)
         self.language_menu.set("Français")
-        self.language_menu.grid(row=0, column=1, rowspan=2)
+        self.language_menu.grid(row=0, column=2, rowspan=2)
 
         bar = ctk.CTkFrame(self, fg_color="#1A2029", corner_radius=12)
         bar.grid(row=1, column=0, sticky="ew", padx=20, pady=(0, 10))
