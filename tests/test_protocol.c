@@ -22,6 +22,8 @@ int main(void) {
     ttf_rx_reset(&rx);
     assert(feed(&rx, "TTF?\n") == TtfRxHello);
     assert(rx.header_len == 0);
+    assert(feed(&rx, "TTFLAYOUT fr-FR.kl\n") == TtfRxLayout);
+    assert(strcmp(rx.command_arg, "fr-FR.kl") == 0);
     assert(feed(&rx, "TTFEXEC\n") == TtfRxExecute);
     assert(feed(&rx, "TTF1 9 cbf43926\n1234") == TtfRxMore);
     assert(feed(&rx, "56789") == TtfRxComplete);

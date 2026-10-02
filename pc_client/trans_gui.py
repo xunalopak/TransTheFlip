@@ -56,7 +56,7 @@ from trans_client import (
     FLIPPER_TX_CHAR_UUID,
     BLE_CHUNK_SIZE,
 )
-from protocol import EXECUTE_COMMAND, RX_UUID, NotificationLines, STATUS_TEXT, MAX_TEXT_BYTES, peer_capacity, encode_text, write_text, bluetooth_diagnostic
+from protocol import EXECUTE_COMMAND, RX_UUID, NotificationLines, STATUS_TEXT, MAX_TEXT_BYTES, peer_capacity, encode_text, encode_layout, write_text, bluetooth_diagnostic
 
 SETTINGS_PATH = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "TransTheFlip" / "settings.json"
 
@@ -102,7 +102,14 @@ GUI_TEXT = {
         "upgrade_capacity": " Update the FAP to reach {bytes} bytes.",
         "remembered": "Last Flipper remembered: click Connect to reconnect.",
         "remember_error": "Unable to remember the device: {error}",
+        "layout": "Flipper keyboard layout",
+        "layout_changed": "Keyboard layout: {name}",
+        "layout_error": "Unable to load keyboard layout: {error}",
         "language": "Language",
+        "subtitle": "Bluetooth text · USB keyboard",
+        "connection_section": "Connection",
+        "text_section": "Text to send", "keys_section": "Quick keys",
+        "show_log": "Show activity ▾", "hide_log": "Hide activity ▴",
         "scan_start": "🔍  Scanning BLE ({seconds:.0f}s)...",
         "service_hint": "    → Check that Bluetooth is on and the Bluetooth service is running.",
         "devices_found": "📡  {count} device(s) found, {flippers} Flipper(s).",
@@ -138,7 +145,14 @@ GUI_TEXT = {
         "upgrade_capacity": " Mettez le FAP à jour pour passer à {bytes} octets.",
         "remembered": "Dernier Flipper mémorisé : cliquez sur Connecter pour vous reconnecter.",
         "remember_error": "Impossible de mémoriser le périphérique : {error}",
+        "layout": "Disposition du clavier du Flipper",
+        "layout_changed": "Disposition du clavier : {name}",
+        "layout_error": "Impossible de charger la disposition : {error}",
         "language": "Langue",
+        "subtitle": "Texte Bluetooth · Clavier USB",
+        "connection_section": "Connexion",
+        "text_section": "Texte à envoyer", "keys_section": "Touches rapides",
+        "show_log": "Afficher le journal ▾", "hide_log": "Masquer le journal ▴",
         "scan_start": "🔍  Recherche Bluetooth ({seconds:.0f} s)...",
         "service_hint": "    → Vérifiez que le Bluetooth et le service Bluetooth sont actifs.",
         "devices_found": "📡  {count} appareil(s) trouvé(s), dont {flippers} Flipper(s).",
@@ -173,6 +187,7 @@ STATUS_TEXT_FR = {
     "ERR:BUSY": "Flipper occupé : terminez ou annulez l’envoi sur le Flipper.",
     "ERR:MEMORY": "Mémoire insuffisante sur le Flipper.",
     "ERR:STORAGE": "Erreur de lecture/écriture sur la carte SD du Flipper.",
+    "ERR:LAYOUT": "Disposition introuvable sur la carte SD du Flipper.",
 }
 
 # Flipper → PC status codes, mapped to human-readable lines.
@@ -189,6 +204,13 @@ SPECIAL_KEYS = [
     "[UP]", "[DOWN]", "[LEFT]", "[RIGHT]", "[DELAY:500]",
     "[CTRL+c]", "[CTRL+v]", "[CTRL+a]", "[ALT+F4]", "[WIN+r]",
 ]
+
+LAYOUT_OPTIONS = {
+    "QWERTY US": "QWERTY US",
+    "AZERTY FR (fr-FR.kl)": "fr-FR.kl",
+    "QWERTZ DE (de-DE.kl)": "de-DE.kl",
+    "QWERTY US (en-US.kl)": "en-US.kl",
+}
 
 
 def _order_devices(found: dict) -> list:
@@ -216,10 +238,14 @@ class BleWorker:
         self._devices = {}
         self._connect_task = None
         self._send_task = None
+        self._layout_task = None
         self._awaiting_result = False
         self._notifications = NotificationLines()
         self._ready = asyncio.Event()
         self._received = asyncio.Event()
+        self._layout_event = asyncio.Event()
+        self._layout_result = None
+        self._layout_error = None
         self._receive_error = None
         self._max_text_bytes = MAX_TEXT_BYTES
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -247,6 +273,9 @@ class BleWorker:
 
     def execute(self) -> None:
         self._submit(self._execute())
+
+    def set_layout(self, name: str) -> None:
+        self._submit(self._set_layout(name))
 
     def shutdown(self) -> None:
         future = asyncio.run_coroutine_threadsafe(self._shutdown(), self._loop)
@@ -315,6 +344,9 @@ class BleWorker:
             self._notifications = NotificationLines()
             self._ready = asyncio.Event()
             self._received = asyncio.Event()
+            self._layout_event = asyncio.Event()
+            self._layout_result = None
+            self._layout_error = None
             self._awaiting_result = False
             self._receive_error = None
             client = BleakClient(
@@ -369,6 +401,10 @@ class BleWorker:
         if send_task is not None and send_task is not asyncio.current_task():
             send_task.cancel()
             await asyncio.gather(send_task, return_exceptions=True)
+        layout_task = getattr(self, "_layout_task", None)
+        if layout_task is not None and layout_task is not asyncio.current_task():
+            layout_task.cancel()
+            await asyncio.gather(layout_task, return_exceptions=True)
         self._awaiting_result = False
         if self._client is not None:
             client = self._client
@@ -383,6 +419,9 @@ class BleWorker:
 
     async def _send(self, text: str) -> None:
         client = self._client
+        if getattr(self, "_layout_task", None) is not None:
+            self._emit("send_error", "Wait for keyboard layout confirmation before sending.")
+            return
         if client is None or not client.is_connected:
             self._emit("send_error", "Not connected. The text is kept.")
             return
@@ -416,6 +455,9 @@ class BleWorker:
         if client is None or not client.is_connected:
             self._emit("send_error", "Not connected. The text is kept.")
             return
+        if getattr(self, "_layout_task", None) is not None:
+            self._emit("send_error", "Wait for keyboard layout confirmation before sending.")
+            return
         if not self._awaiting_result:
             self._emit("log", "No text is waiting on the Flipper.")
             return
@@ -424,6 +466,35 @@ class BleWorker:
             self._emit("log", "▶  Execution requested from the PC.")
         except Exception as exc:  # noqa: BLE001
             self._emit("send_error", f"Execution failed: {exc}")
+
+    async def _set_layout(self, name: str) -> None:
+        client = self._client
+        if client is None or not client.is_connected:
+            self._emit("layout_error", "Not connected.")
+            return
+        if self._awaiting_result or self._layout_task is not None:
+            self._emit("layout_error", "Finish the current transfer before changing the layout.")
+            return
+        self._layout_task = asyncio.current_task()
+        self._layout_event = asyncio.Event()
+        self._layout_result = None
+        self._layout_error = None
+        try:
+            await client.write_gatt_char(RX_UUID, encode_layout(name), response=True)
+            await asyncio.wait_for(self._layout_event.wait(), 5.0)
+            if self._layout_error:
+                raise RuntimeError(self._layout_error)
+            if self._layout_result is None:
+                raise RuntimeError("No layout confirmation from the Flipper.")
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            message = "No layout confirmation from the Flipper." if isinstance(exc, TimeoutError) else str(exc)
+            self._emit("layout_error", message)
+            if isinstance(exc, TimeoutError):
+                await self._disconnect()
+        finally:
+            self._layout_task = None
 
     # ---- bleak callbacks (asyncio thread) ----
     def _on_notify(self, _characteristic: BleakGATTCharacteristic, data: bytearray) -> None:
@@ -437,6 +508,10 @@ class BleWorker:
             if msg == "RECV":
                 self._received.set()
             elif msg.startswith("ERR"):
+                if getattr(self, "_layout_task", None) is not None:
+                    self._layout_error = msg
+                    self._layout_event.set()
+                    continue
                 self._receive_error = STATUS_TEXT.get(msg, msg)
                 self._received.set()
                 if self._connect_task is not None:
@@ -444,6 +519,12 @@ class BleWorker:
                 self._awaiting_result = False
             elif msg in ("OK", "CANCEL"):
                 self._awaiting_result = False
+            elif msg.startswith("LAYOUT:"):
+                self._layout_result = msg.split(":", 1)[1]
+                if hasattr(self, "_layout_event"):
+                    self._layout_event.set()
+                self._emit("layout_status", self._layout_result)
+                continue
             self._emit("notify", msg)
 
     def _on_disconnected(self, _client: BleakClient) -> None:
@@ -453,6 +534,9 @@ class BleWorker:
         self._awaiting_result = False
         self._receive_error = "Bluetooth connection lost."
         self._received.set()
+        if getattr(self, "_layout_task", None) is not None:
+            self._layout_error = "Bluetooth connection lost."
+            self._layout_event.set()
         self._emit("log", "🔌  Link lost (device disconnected).")
         self._emit("disconnected", None)
 
@@ -462,12 +546,14 @@ class BleWorker:
 # ============================================================
 class App(ctk.CTk):
     def __init__(self) -> None:
+        ctk.set_appearance_mode("dark")
         super().__init__()
         self._language = "fr"
         self._connected_name = ""
         self.title(GUI_TEXT[self._language]["title"])
-        self.geometry("820x740")
+        self.geometry("900x800")
         self.minsize(740, 650)
+        self.configure(fg_color="#101318")
 
         self._events: "queue.Queue[tuple[str, object]]" = queue.Queue()
         # Wrap put() so emit(kind, payload) enqueues a single (kind, payload)
@@ -496,96 +582,130 @@ class App(ctk.CTk):
     # ---- layout ----
     def _build_ui(self) -> None:
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(3, weight=1)  # log row expands
+        self.grid_rowconfigure(3, weight=1)
+        accent = "#FF902E"
+        secondary = dict(fg_color="#29313D", hover_color="#364252", height=34, corner_radius=8)
+        menu_style = dict(fg_color="#222A35", button_color="#354152",
+                          button_hover_color="#46566C", height=32, corner_radius=8)
+        heading_font = ctk.CTkFont(size=14, weight="bold")
 
-        # Row 0 — connection bar
-        bar = ctk.CTkFrame(self)
-        bar.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 6))
-        bar.grid_columnconfigure(1, weight=1)
-
-        self.status_label = ctk.CTkLabel(
-            bar, text=self._tr("disconnected"), text_color="#e05555", anchor="w"
-        )
-        self.status_label.grid(row=0, column=0, columnspan=6, sticky="w", padx=10, pady=8)
-
-        self.device_var = ctk.StringVar(value=self._tr("scan_first"))
-        self.device_menu = ctk.CTkOptionMenu(
-            bar, values=[self._tr("scan_first")], variable=self.device_var, width=240
-        )
-        self.device_menu.grid(row=1, column=0, columnspan=2, sticky="ew", padx=6, pady=8)
-
-        self.scan_btn = ctk.CTkButton(bar, text=self._tr("scan"), width=100, command=self._on_scan)
-        self.scan_btn.grid(row=1, column=2, padx=6, pady=8)
-
-        self.connect_btn = ctk.CTkButton(
-            bar, text=self._tr("connect"), width=110, command=self._on_connect_click
-        )
-        self.connect_btn.grid(row=1, column=3, padx=6, pady=8)
-        self.disconnect_btn = ctk.CTkButton(
-            bar, text=self._tr("disconnect"), width=110,
-            command=self._on_disconnect_click, state="disabled",
-        )
-        self.disconnect_btn.grid(row=1, column=4, padx=(6, 10), pady=8)
-        self.language_menu = ctk.CTkOptionMenu(
-            bar, values=["Français", "English"], width=110,
-            command=self._on_language_change,
-        )
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=24, pady=(16, 10))
+        header.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(header, text="TransTheFlip", text_color=accent,
+                     font=ctk.CTkFont(size=26, weight="bold"), anchor="w").grid(row=0, column=0, sticky="w")
+        self.subtitle_label = ctk.CTkLabel(header, text=self._tr("subtitle"), text_color="#A5AFBE", anchor="w")
+        self.subtitle_label.grid(row=1, column=0, sticky="w")
+        self.language_menu = ctk.CTkOptionMenu(header, values=["Français", "English"],
+                                               width=115, command=self._on_language_change, **menu_style)
         self.language_menu.set("Français")
-        self.language_menu.grid(row=1, column=5, padx=(0, 10), pady=8)
+        self.language_menu.grid(row=0, column=1, rowspan=2)
 
-        # Row 1 — text entry + send
-        entry_frame = ctk.CTkFrame(self, fg_color="transparent")
-        entry_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=4)
+        bar = ctk.CTkFrame(self, fg_color="#1A2029", corner_radius=12)
+        bar.grid(row=1, column=0, sticky="ew", padx=20, pady=(0, 10))
+        bar.grid_columnconfigure(0, weight=1)
+        self.connection_heading = ctk.CTkLabel(bar, text=self._tr("connection_section"), font=heading_font)
+        self.connection_heading.grid(row=0, column=0, sticky="w", padx=16, pady=(8, 0))
+        self.status_label = ctk.CTkLabel(bar, text=self._tr("disconnected"), text_color="#e05555", anchor="e")
+        self.status_label.grid(row=0, column=1, columnspan=3, sticky="e", padx=16)
+        self.device_var = ctk.StringVar(value=self._tr("scan_first"))
+        self.device_menu = ctk.CTkOptionMenu(bar, values=[self._tr("scan_first")], variable=self.device_var,
+                                             width=210, **menu_style)
+        self.device_menu.grid(row=1, column=0, sticky="ew", padx=(16, 8), pady=(6, 14))
+        self.scan_btn = ctk.CTkButton(bar, text=self._tr("scan"), width=100, command=self._on_scan, **secondary)
+        self.scan_btn.grid(row=1, column=1, padx=4, pady=(6, 14))
+        self.connect_btn = ctk.CTkButton(bar, text=self._tr("connect"), width=100,
+                                        command=self._on_connect_click, **secondary)
+        self.connect_btn.grid(row=1, column=2, padx=4, pady=(6, 14))
+        self.disconnect_btn = ctk.CTkButton(bar, text=self._tr("disconnect"), width=110,
+                                           command=self._on_disconnect_click, state="disabled", **secondary)
+        self.disconnect_btn.grid(row=1, column=3, padx=(4, 16), pady=(6, 14))
+
+        settings = ctk.CTkFrame(self, fg_color="#1A2029", corner_radius=12)
+        settings.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 10))
+        settings.grid_columnconfigure((0, 1), weight=1)
+        self.layout_label = ctk.CTkLabel(settings, text=self._tr("layout"), anchor="w", text_color="#A5AFBE")
+        self.layout_label.grid(row=0, column=0, sticky="w", padx=16, pady=(6, 0))
+        self.history_label = ctk.CTkLabel(settings, text=self._tr("history"), anchor="w", text_color="#A5AFBE")
+        self.history_label.grid(row=0, column=1, sticky="w", padx=16, pady=(6, 0))
+        self.layout_menu = ctk.CTkOptionMenu(settings, values=list(LAYOUT_OPTIONS), width=190,
+                                            command=self._on_layout_change, state="disabled", **menu_style)
+        self.layout_menu.set("QWERTY US")
+        self._layout_previous = "QWERTY US"
+        self._layout_pending = False
+        self.layout_menu.grid(row=1, column=0, sticky="ew", padx=(16, 8), pady=(2, 12))
+        self.history_menu = ctk.CTkOptionMenu(settings, values=[self._tr("history")],
+                                             command=self._restore_history, **menu_style)
+        self.history_menu.grid(row=1, column=1, sticky="ew", padx=(8, 16), pady=(2, 12))
+
+        entry_frame = ctk.CTkFrame(self, fg_color="#1A2029", corner_radius=12)
+        entry_frame.grid(row=3, column=0, sticky="nsew", padx=20, pady=(0, 10))
         entry_frame.grid_columnconfigure(0, weight=1)
-
-        self.entry = ctk.CTkTextbox(entry_frame, height=110, wrap="word")
-        self.entry.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        entry_frame.grid_rowconfigure(1, weight=1)
+        self.text_heading = ctk.CTkLabel(entry_frame, text=self._tr("text_section"), font=heading_font)
+        self.text_heading.grid(row=0, column=0, sticky="w", padx=16, pady=(8, 4))
+        self.entry = ctk.CTkTextbox(entry_frame, height=90, wrap="word", fg_color="#11161E",
+                                   text_color="#EDF1F7", corner_radius=8, border_width=1,
+                                   border_color="#303A48", font=ctk.CTkFont(family="Consolas", size=14))
+        self.entry.grid(row=1, column=0, sticky="nsew", padx=16)
         self.entry.bind("<Control-Return>", self._on_send)
-
-        self.send_btn = ctk.CTkButton(
-            entry_frame, text=self._tr("send"), width=110, command=self._on_send, state="disabled"
-        )
-        self.send_btn.grid(row=0, column=1)
-        self.execute_btn = ctk.CTkButton(
-            entry_frame, text=self._tr("execute"), width=170,
-            command=self._on_execute, state="disabled",
-        )
-        self.execute_btn.grid(row=0, column=2, padx=(8, 0))
-        self.history_menu = ctk.CTkOptionMenu(
-            entry_frame, values=[self._tr("history")], command=self._restore_history,
-        )
-        self.history_menu.grid(row=1, column=0, columnspan=2, sticky="ew", pady=6)
-        self.transfer_label = ctk.CTkLabel(
-            entry_frame, text=self._tr("hint", bytes=MAX_TEXT_BYTES),
-            wraplength=690, anchor="w",
-        )
-        self.transfer_label.grid(row=2, column=0, columnspan=2, sticky="ew")
-        self.progress_bar = ctk.CTkProgressBar(entry_frame)
+        self.transfer_label = ctk.CTkLabel(entry_frame, text=self._tr("hint", bytes=MAX_TEXT_BYTES),
+                                           wraplength=640, anchor="w", justify="left", text_color="#A5AFBE", font=ctk.CTkFont(size=12))
+        self.transfer_label.grid(row=2, column=0, sticky="ew", padx=16, pady=(4, 0))
+        self.progress_bar = ctk.CTkProgressBar(entry_frame, height=4, progress_color=accent, fg_color="#303A48")
         self.progress_bar.set(0)
-        self.progress_bar.grid(row=3, column=0, columnspan=2, sticky="ew", pady=5)
+        self.progress_bar.grid(row=3, column=0, sticky="ew", padx=16, pady=(4, 8))
+        actions = ctk.CTkFrame(entry_frame, fg_color="transparent")
+        actions.grid(row=4, column=0, sticky="e", padx=16, pady=(0, 12))
+        self.send_btn = ctk.CTkButton(actions, text=self._tr("send"), width=145, height=38,
+                                      fg_color=accent, hover_color="#E77B19", text_color="#151515",
+                                      text_color_disabled="#77716A", font=heading_font,
+                                      command=self._on_send, state="disabled", corner_radius=8)
+        self.send_btn.grid(row=0, column=0, padx=(0, 10))
+        self.execute_btn = ctk.CTkButton(actions, text=self._tr("execute"), width=205,
+                                         border_width=1, border_color=accent, command=self._on_execute,
+                                         state="disabled", **secondary)
+        self.execute_btn.grid(row=0, column=1)
 
-        # Row 2 — special key quick-insert buttons
-        keys_frame = ctk.CTkFrame(self)
-        keys_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=6)
-        cols = 5
-        for i in range(cols):
-            keys_frame.grid_columnconfigure(i, weight=1)
+        keys_frame = ctk.CTkFrame(self, fg_color="transparent")
+        keys_frame.grid(row=4, column=0, sticky="ew", padx=20, pady=(0, 6))
+        self.keys_heading = ctk.CTkLabel(keys_frame, text=self._tr("keys_section"), font=heading_font)
+        self.keys_heading.grid(row=0, column=0, columnspan=5, sticky="w", padx=4)
+        for i in range(5):
+            keys_frame.grid_columnconfigure(i, weight=1, uniform="keys")
         for idx, tag in enumerate(SPECIAL_KEYS):
-            btn = ctk.CTkButton(
-                keys_frame,
-                text=tag,
-                height=28,
-                fg_color="#2b2b3c",
-                hover_color="#3a3a52",
-                command=lambda t=tag: self._insert_key(t),
-            )
-            btn.grid(row=idx // cols, column=idx % cols, padx=4, pady=4, sticky="ew")
+            btn = ctk.CTkButton(keys_frame, text=tag, height=26, width=80,
+                                fg_color="#222A35", hover_color="#364252", text_color="#C4CCD8",
+                                corner_radius=6, font=ctk.CTkFont(size=12),
+                                command=lambda t=tag: self._insert_key(t))
+            btn.grid(row=1 + idx // 5, column=idx % 5, padx=4, pady=3, sticky="ew")
 
-        # Row 3 — log / console
-        self.log_box = ctk.CTkTextbox(self, wrap="word")
-        self.log_box.grid(row=3, column=0, sticky="nsew", padx=10, pady=(6, 10))
+        self.log_frame = ctk.CTkFrame(self, fg_color="#1A2029", corner_radius=12)
+        self.log_frame.grid(row=5, column=0, sticky="ew", padx=20, pady=(0, 16))
+        self.log_frame.grid_columnconfigure(0, weight=1)
+        self._log_visible = False
+        self.log_toggle = ctk.CTkButton(self.log_frame, text=self._tr("show_log"), anchor="w",
+                                        fg_color="transparent", hover_color="#29313D", height=32,
+                                        text_color="#A5AFBE", command=self._toggle_log)
+        self.log_toggle.grid(row=0, column=0, sticky="ew", padx=6, pady=4)
+        self.log_box = ctk.CTkTextbox(self.log_frame, height=120, wrap="word", fg_color="#11161E",
+                                     font=ctk.CTkFont(size=12))
+        self.log_box.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
+        self.log_box.grid_remove()
         self.log_box.configure(state="disabled")
         self._log(self._tr("ready"))
+
+    def _toggle_log(self) -> None:
+        self._log_visible = not self._log_visible
+        if self._log_visible:
+            self.minsize(740, 800)
+            if self.winfo_height() < 800:
+                self.geometry(f"{self.winfo_width()}x800")
+            self.log_box.grid()
+        else:
+            self.log_box.grid_remove()
+            self.minsize(740, 650)
+        self.log_toggle.configure(text=self._tr("hide_log" if self._log_visible else "show_log"))
 
     # ---- helpers ----
     def _tr(self, key: str, **values) -> str:
@@ -600,9 +720,14 @@ class App(ctk.CTk):
                 return STATUS_TEXT_FR.get(code, text)
         replacements = {
             "Not connected. The text is kept.": App._tr(self, "not_connected"),
+            "Not connected.": App._tr(self, "not_connected"),
             "Transfer interrupted. The text is kept.": App._tr(self, "send_error"),
             "A transfer is already waiting for the Flipper result.": App._tr(self, "already_waiting"),
             "No text is waiting on the Flipper.": App._tr(self, "no_pending"),
+            "Finish the current transfer before changing the layout.": "Terminez le transfert en cours avant de changer la disposition.",
+            "ERR:LAYOUT": "Disposition introuvable sur le Flipper.",
+            "ERR:PROTOCOL": "Le FAP ne prend pas en charge le changement de disposition.",
+            "No layout confirmation from the Flipper.": "Aucune confirmation de disposition reçue du Flipper.",
             "Bluetooth connection lost.": "Connexion Bluetooth perdue.",
             "Text is empty.": "Le texte est vide.",
             "Unsupported character: use ASCII text, tabs, and line breaks.": "Caractère non pris en charge : utilisez du texte ASCII, des tabulations et des retours à la ligne.",
@@ -642,11 +767,19 @@ class App(ctk.CTk):
         self.disconnect_btn.configure(text=self._tr("disconnect"))
         self.send_btn.configure(text=self._tr("send"))
         self.execute_btn.configure(text=self._tr("execute"))
+        self.layout_label.configure(text=self._tr("layout"))
+        self.subtitle_label.configure(text=self._tr("subtitle"))
+        self.connection_heading.configure(text=self._tr("connection_section"))
+        self.history_label.configure(text=self._tr("history"))
+        self.text_heading.configure(text=self._tr("text_section"))
+        self.keys_heading.configure(text=self._tr("keys_section"))
+        self.log_toggle.configure(text=self._tr("hide_log" if self._log_visible else "show_log"))
         self.transfer_label.configure(text=self._tr("hint", bytes=self._max_text_bytes))
         if self._history:
             self.history_menu.configure(values=[f"{i}. {item[:45].replace(chr(10), ' ↵ ')}" for i, item in enumerate(self._history, 1)])
         else:
             self.history_menu.configure(values=[self._tr("history")])
+            self.history_menu.set(self._tr("history"))
         if not self._dev_map:
             self.device_menu.configure(values=[self._tr("scan_first")])
             self.device_var.set(self._tr("scan_first"))
@@ -681,6 +814,8 @@ class App(ctk.CTk):
         self.transfer_label.configure(text=message)
         self.send_btn.configure(state="normal" if self._connected else "disabled")
         self.execute_btn.configure(state="disabled")
+        if hasattr(self, "layout_menu"):
+            self.layout_menu.configure(state="normal" if self._connected else "disabled")
 
     def _set_status(self, text: str, color: str) -> None:
         self.status_label.configure(text=text, text_color=color)
@@ -712,10 +847,14 @@ class App(ctk.CTk):
         self.disconnect_btn.configure(state="disabled")
         self.send_btn.configure(state="disabled")
         self.execute_btn.configure(state="disabled")
+        if hasattr(self, "layout_menu"):
+            self.layout_menu.configure(state="disabled")
         self._set_status(App._tr(self, "disconnecting"), "#e0a955")
         self._worker.disconnect()
 
     def _on_send(self, _event=None) -> None:
+        if getattr(self, "_layout_pending", False):
+            return "break"
         text = self.entry.get("1.0", "end-1c")
         if not text:
             return "break"
@@ -732,6 +871,8 @@ class App(ctk.CTk):
         self._pending_text = text
         self._transfer_stage = "transfer"
         self.send_btn.configure(state="disabled")
+        if hasattr(self, "layout_menu"):
+            self.layout_menu.configure(state="disabled")
         self.progress_bar.set(0)
         self.transfer_label.configure(text=App._tr(self, "transfer"))
         self._log(f"→  {text}")
@@ -744,6 +885,14 @@ class App(ctk.CTk):
         self.execute_btn.configure(state="disabled")
         self.transfer_label.configure(text=App._tr(self, "execute_requested"))
         self._worker.execute()
+
+    def _on_layout_change(self, label: str) -> None:
+        if not self._connected or label not in LAYOUT_OPTIONS or self._pending_text is not None:
+            return
+        self._layout_pending = True
+        self.layout_menu.configure(state="disabled")
+        self.send_btn.configure(state="disabled")
+        self._worker.set_layout(LAYOUT_OPTIONS[label])
 
     # ---- event pump (drains worker events on the Tk thread) ----
     def _poll_events(self) -> None:
@@ -788,6 +937,8 @@ class App(ctk.CTk):
             self.connect_btn.configure(state="disabled")
             self.disconnect_btn.configure(state="normal")
             self.send_btn.configure(state="normal")
+            if hasattr(self, "layout_menu"):
+                self.layout_menu.configure(state="normal")
             self._set_status(App._tr(self, "connected", name=payload), "#55cc66")
             address = self._dev_map.get(str(payload))
             if address:
@@ -796,6 +947,7 @@ class App(ctk.CTk):
                 except OSError as exc:
                     self._log(App._tr(self, "remember_error", error=exc))
         elif kind == "disconnected":
+            self._layout_pending = False
             self._connected = False
             self._busy = False
             self.connect_btn.configure(state="normal")
@@ -804,6 +956,8 @@ class App(ctk.CTk):
             self.disconnect_btn.configure(state="disabled")
             self.send_btn.configure(state="disabled")
             self.execute_btn.configure(state="disabled")
+            if hasattr(self, "layout_menu"):
+                self.layout_menu.configure(state="disabled")
             self._connected_name = ""
             self._set_status(App._tr(self, "disconnected"), "#e05555")
             if self._pending_text is not None:
@@ -816,6 +970,27 @@ class App(ctk.CTk):
             message = App._localize_text(self, str(payload))
             self._log(message)
             self._finish_transfer(message)
+        elif kind in ("layout", "layout_status"):
+            self._layout_pending = False
+            layout_name = str(payload)
+            if hasattr(self, "layout_menu"):
+                for label, wire_name in LAYOUT_OPTIONS.items():
+                    if layout_name == "QWERTY US" and wire_name == "QWERTY US":
+                        self.layout_menu.set(label)
+                    elif layout_name == wire_name.removesuffix(".kl"):
+                        self.layout_menu.set(label)
+                self._layout_previous = self.layout_menu.get()
+                self.layout_menu.configure(state="normal" if self._connected and self._pending_text is None else "disabled")
+            self.send_btn.configure(state="normal" if self._connected and self._pending_text is None else "disabled")
+            self._log(App._tr(self, "layout_changed", name=layout_name))
+        elif kind == "layout_error":
+            self._layout_pending = False
+            message = App._localize_text(self, str(payload))
+            if hasattr(self, "layout_menu"):
+                self.layout_menu.set(getattr(self, "_layout_previous", "QWERTY US"))
+                self.layout_menu.configure(state="normal" if self._connected and self._pending_text is None else "disabled")
+            self.send_btn.configure(state="normal" if self._connected and self._pending_text is None else "disabled")
+            self._log(App._tr(self, "layout_error", error=message))
         elif kind == "notify":
             msg = str(payload)
             self._transfer_stage = msg

@@ -70,6 +70,8 @@ characters (`@`, `&`, accented chars, etc.) will be wrong.
 (Windows: `Win+Space` to cycle layouts) before sending.
 
 The Flipper can load BadUSB `.kl` layouts from `/ext/badusb/assets/layouts`.
+When connected, the GUI layout menu can select the built-in **QWERTY US** layout
+or the common `fr-FR.kl`, `de-DE.kl`, and `en-US.kl` files on the Flipper SD card.
 
 ## Requirements
 
@@ -139,6 +141,12 @@ are temporarily stored on the Flipper SD card and removed after completion or ca
 Use the language menu to switch the GUI between French and English. The command-line
 client is English-only.
 
+The desktop interface uses a dark theme with orange accents, separate connection,
+keyboard and text sections, and a resizable multiline editor. The activity log is
+collapsed by default: click **Show activity** to view Bluetooth diagnostics and
+transfer messages. Opening the log enlarges small windows to keep the editor and
+buttons accessible. Session history is kept in memory only.
+
 ## Project structure
 
 ```
@@ -163,7 +171,7 @@ The Flipper does **not** expose the standard NUS but its own serial service:
 - **TX** (Flipper→PC, Indicate): `19ed82ae-ed21-4c9d-4145-228e61fe0000`
 - Message terminator: `\n` (newline)
 - Flipper→PC status messages: `READY`, `RECV`, `WAIT_USB`, `SENDING`, `PROGRESS`,
-  `OK`, `ERR`, `CANCEL`
+  `OK`, `ERR`, `LAYOUT`, `CANCEL`
 
 > 🔐 **Authentication required.** The RX/TX characteristics are declared
 > `ATTR_PERMISSION_AUTHEN` in the firmware: the link must be **paired and

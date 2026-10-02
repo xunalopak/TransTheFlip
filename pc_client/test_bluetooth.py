@@ -50,6 +50,43 @@ class FakeClient:
 
 
 class BluetoothTests(unittest.IsolatedAsyncioTestCase):
+    async def test_layout_responses_and_transfer_exclusion(self):
+        events = []
+        worker = gui.BleWorker(lambda *event: events.append(event))
+        worker._loop.call_soon_threadsafe(worker._loop.stop)
+        await asyncio.to_thread(worker._thread.join, 3)
+        worker._loop.close()
+        worker._notifications = gui.NotificationLines()
+        reply = b"LAYOUT:fr-FR\n"
+        writes = []
+
+        async def write(uuid, data, response):
+            writes.append(data)
+            worker._on_notify(None, bytearray(reply))
+
+        client = SimpleNamespace(is_connected=True, write_gatt_char=write)
+        worker._client = client
+        await worker._set_layout("fr-FR.kl")
+        self.assertEqual(writes, [b"TTFLAYOUT fr-FR.kl\n"])
+        self.assertIn(("layout_status", "fr-FR"), events)
+        reply = b"ERR:LAYOUT\n"
+        await worker._set_layout("de-DE.kl")
+        self.assertIn(("layout_error", "ERR:LAYOUT"), events)
+        worker._awaiting_result = True
+        await worker._set_layout("QWERTY US")
+        self.assertEqual(len(writes), 2)
+        worker._awaiting_result = False
+        worker._layout_task = asyncio.current_task()
+        await worker._send("must not be written")
+        self.assertEqual(len(writes), 2)
+        worker._on_notify(None, bytearray(b"LAYOUT:fr-FR\nRECV\nOK\n"))
+        self.assertIn(("notify", "RECV"), events)
+        self.assertIn(("notify", "OK"), events)
+        worker._layout_event.clear()
+        worker._on_disconnected(client)
+        self.assertTrue(worker._layout_event.is_set())
+        self.assertEqual(worker._layout_error, "Bluetooth connection lost.")
+
     async def test_connection_lifecycle(self):
         events = []
         worker = gui.BleWorker.__new__(gui.BleWorker)

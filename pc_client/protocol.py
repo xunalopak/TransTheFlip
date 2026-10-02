@@ -7,6 +7,7 @@ RX_UUID = "19ed82ae-ed21-4c9d-4145-228e62fe0000"
 EXECUTE_COMMAND = b"TTFEXEC\n"
 MAX_TEXT_BYTES = 65536
 CHUNK_SIZE = 20
+LAYOUT_COMMAND_MAX = 21
 
 STATUS_TEXT = {
     "RECV": "Text verified — waiting for confirmation on the Flipper.",
@@ -24,7 +25,19 @@ STATUS_TEXT = {
     "ERR:BUSY": "Flipper is busy: finish or cancel the transfer on the Flipper.",
     "ERR:MEMORY": "Not enough memory on the Flipper.",
     "ERR:STORAGE": "Read/write error on the Flipper SD card.",
+    "ERR:LAYOUT": "Keyboard layout was not found on the Flipper SD card.",
 }
+
+
+def encode_layout(name):
+    """Encode a validated layout basename for the Flipper command channel."""
+    if not isinstance(name, str) or not name or len(name) > LAYOUT_COMMAND_MAX:
+        raise ValueError("Invalid keyboard layout name.")
+    if name == "QWERTY US":
+        return b"TTFLAYOUT QWERTY US\n"
+    if not re.fullmatch(r"[A-Za-z0-9_-]+\.kl", name):
+        raise ValueError("Invalid keyboard layout name.")
+    return f"TTFLAYOUT {name}\n".encode("ascii")
 
 
 class NotificationLines:

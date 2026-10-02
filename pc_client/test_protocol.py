@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import Mock, AsyncMock, patch
 from types import SimpleNamespace
 
-from protocol import encode_text, NotificationLines, write_text, bluetooth_diagnostic, peer_capacity, MAX_TEXT_BYTES
+from protocol import encode_text, encode_layout, NotificationLines, write_text, bluetooth_diagnostic, peer_capacity, MAX_TEXT_BYTES
 from trans_gui import App, load_last_device, save_last_device
 
 
@@ -44,6 +44,13 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ValueError, "maximum 255"):
             await write_text(client, "x" * 256, max_bytes=255)
         client.write_gatt_char.assert_not_called()
+
+    async def test_layout_command_validation(self):
+        self.assertEqual(encode_layout("QWERTY US"), b"TTFLAYOUT QWERTY US\n")
+        self.assertEqual(encode_layout("fr-FR.kl"), b"TTFLAYOUT fr-FR.kl\n")
+        for invalid in ("", "../fr-FR.kl", "fr/F-F.kl", "fr-FR.txt", "x" * 22):
+            with self.assertRaises(ValueError):
+                encode_layout(invalid)
 
     async def test_execute_button_requests_flipper_action(self):
         app = SimpleNamespace(

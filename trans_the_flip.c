@@ -276,6 +276,49 @@ static void open_layout_picker(TransTheFlipApp* app) {
     view_port_update(app->view_port);
 }
 
+/** Applies a layout selected remotely by its safe basename or the built-in layout. */
+static bool set_layout_by_name(TransTheFlipApp* app, const char* name) {
+    if(!name || !name[0]) return false;
+
+    if(strcmp(name, "QWERTY US") == 0) {
+        ttf_hid_reset_layout();
+        furi_mutex_acquire(app->mutex, FuriWaitForever);
+        app->layout_path[0] = '\0';
+        strncpy(app->layout_name, "QWERTY US", TTF_LAYOUT_NAME_SIZE - 1);
+        app->layout_name[TTF_LAYOUT_NAME_SIZE - 1] = '\0';
+        furi_mutex_release(app->mutex);
+        save_layout_setting("");
+        return true;
+    }
+
+    size_t length = strlen(name);
+    if(length < 4 || length >= TTF_LAYOUT_ARG_SIZE ||
+       strcmp(name + length - 3, ".kl") != 0 || strstr(name, "..") != NULL) {
+        return false;
+    }
+    for(size_t i = 0; i < length; i++) {
+        char c = name[i];
+        if(!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+             (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.')) {
+            return false;
+        }
+    }
+
+    char path[TTF_LAYOUT_PATH_SIZE];
+    int written = snprintf(path, sizeof(path), "%s/%s", TTF_LAYOUT_FOLDER, name);
+    if(written < 0 || (size_t)written >= sizeof(path) || !ttf_hid_load_layout(path)) {
+        return false;
+    }
+
+    furi_mutex_acquire(app->mutex, FuriWaitForever);
+    strncpy(app->layout_path, path, TTF_LAYOUT_PATH_SIZE - 1);
+    app->layout_path[TTF_LAYOUT_PATH_SIZE - 1] = '\0';
+    layout_name_from_path(path, app->layout_name, TTF_LAYOUT_NAME_SIZE);
+    furi_mutex_release(app->mutex);
+    save_layout_setting(path);
+    return true;
+}
+
 // ============================================================
 // Réinitialise le buffer de texte (après envoi ou annulation)
 // Appel sous mutex.
@@ -432,10 +475,32 @@ int32_t trans_the_flip_app(void* p) {
                     TtfRxResult result = ttf_rx_feed(&app->receiver, (uint8_t)ev.text[i]);
                     if(result == TtfRxHello) {
                         app->rx_tick = 0;
-                        char ready[32];
-                        snprintf(ready, sizeof(ready), "READY:1:%u\n", TTF_MAX_TEXT_BYTES);
+                        char ready[64];
+                        snprintf(ready, sizeof(ready), "READY:1:%u\nLAYOUT:%s\n", TTF_MAX_TEXT_BYTES, app->layout_name);
                         ttf_bt_send_status(ready);
                         ttf_rx_set_sink(&app->receiver, payload_sink, app);
+                    } else if(result == TtfRxLayout) {
+                        app->rx_tick = 0;
+                        ttf_rx_set_sink(&app->receiver, payload_sink, app);
+                        if(app->state != AppStateConnected) {
+                            ttf_bt_send_status("ERR:BUSY\n");
+                        } else {
+                            char layout_arg[TTF_LAYOUT_ARG_SIZE];
+                            strncpy(layout_arg, app->receiver.command_arg, sizeof(layout_arg) - 1);
+                            layout_arg[sizeof(layout_arg) - 1] = '\0';
+                            furi_mutex_release(app->mutex);
+                            bool layout_ok = set_layout_by_name(app, layout_arg);
+                            furi_mutex_acquire(app->mutex, FuriWaitForever);
+                            if(layout_ok) {
+                                char layout_status[TTF_LAYOUT_NAME_SIZE + 9];
+                                snprintf(layout_status, sizeof(layout_status), "LAYOUT:%s\n", app->layout_name);
+                                ttf_bt_send_status(layout_status);
+                                view_port_update(app->view_port);
+                            } else {
+                                ttf_bt_send_status("ERR:LAYOUT\n");
+                            }
+                        }
+                        break;
                     } else if(result == TtfRxExecute) {
                         ttf_rx_set_sink(&app->receiver, payload_sink, app);
                         if(app->state != AppStateTextReceived) {

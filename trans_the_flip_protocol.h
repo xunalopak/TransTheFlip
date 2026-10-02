@@ -10,10 +10,11 @@
 #define TTF_MAX_TEXT_BYTES 65536
 #define TTF_RX_CHUNK_SIZE 256
 #define TTF_RX_TIMEOUT_MS 5000
+#define TTF_LAYOUT_ARG_SIZE 32
 
 typedef enum {
     TtfRxMore, TtfRxHello, TtfRxComplete, TtfRxProtocol, TtfRxTooLong,
-    TtfRxChecksum, TtfRxUnsupported, TtfRxExecute, TtfRxStorage,
+    TtfRxChecksum, TtfRxUnsupported, TtfRxExecute, TtfRxStorage, TtfRxLayout,
 } TtfRxResult;
 
 typedef bool (*TtfRxSink)(void* context, const uint8_t* data, size_t length);
@@ -21,6 +22,7 @@ typedef bool (*TtfRxSink)(void* context, const uint8_t* data, size_t length);
 typedef struct {
     char header[32];
     size_t header_len;
+    char command_arg[TTF_LAYOUT_ARG_SIZE];
     char text[TTF_TEXT_BUFFER_SIZE];
     size_t length;
     size_t expected;
@@ -42,6 +44,16 @@ static inline void ttf_rx_set_sink(TtfReceiver* rx, TtfRxSink sink, void* contex
     rx->sink_context = context;
 }
 
+static inline TtfRxResult ttf_rx_command(TtfReceiver* rx, const char* argument) {
+    char copy[TTF_LAYOUT_ARG_SIZE];
+    strncpy(copy, argument, sizeof(copy) - 1);
+    copy[sizeof(copy) - 1] = '\0';
+    ttf_rx_reset(rx);
+    strncpy(rx->command_arg, copy, sizeof(rx->command_arg) - 1);
+    rx->command_arg[sizeof(rx->command_arg) - 1] = '\0';
+    return TtfRxLayout;
+}
+
 // Expand control characters for a readable, scrollable preview without allocating
 // a second full-size buffer. Returns the total number of displayed characters.
 static inline size_t ttf_preview(const char* text, size_t offset, char* out, size_t capacity) {
@@ -58,7 +70,8 @@ static inline size_t ttf_preview(const char* text, size_t offset, char* out, siz
     return total;
 }
 
-// Wire format: TTF1 <byte length> <CRC32 hex>\n<payload>.
+// Wire format: TTF1 <byte length> <CRC32 hex>\n<payload>,
+// plus the control commands TTF?, TTFEXEC, and TTFLAYOUT <basename>.
 // No text is executable until the entire frame passes validation.
 static inline TtfRxResult ttf_rx_feed(TtfReceiver* rx, uint8_t byte) {
     if(rx->expected == 0) {
@@ -76,6 +89,9 @@ static inline TtfRxResult ttf_rx_feed(TtfReceiver* rx, uint8_t byte) {
         if(strcmp(rx->header, "TTFEXEC") == 0) {
             ttf_rx_reset(rx);
             return TtfRxExecute;
+        }
+        if(strncmp(rx->header, "TTFLAYOUT ", 10) == 0 && rx->header[10] != '\0') {
+            return ttf_rx_command(rx, rx->header + 10);
         }
         unsigned length = 0, crc = 0;
         int end = 0;

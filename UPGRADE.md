@@ -44,6 +44,8 @@ Flipper app confirms its protocol version.
 - Enter adds a line; Ctrl+Enter or Send transfers the text.
 - The GUI language menu switches all PC interface messages between French and English;
   the command-line client is English-only.
+- The connected GUI can select the Flipper keyboard layout: built-in QWERTY US or
+  `fr-FR.kl`, `de-DE.kl`, and `en-US.kl` from the Flipper SD card.
 - The progress bar follows Bluetooth transfer, Flipper confirmation, and typing.
   “Done” appears only after the Flipper responds, not after the last BLE write.
 - The text stays in the editor after an error. A pending transfer blocks the next
