@@ -1,6 +1,6 @@
 App(
     appid="trans_the_flip",
-    name="TransTheFlip",
+    name="DuckerTheFlipper",
     apptype=FlipperAppType.EXTERNAL,
     entry_point="trans_the_flip_app",
     sources=["trans_the_flip*.c"],

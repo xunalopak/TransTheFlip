@@ -31,9 +31,9 @@ Flipper app confirms its protocol version.
 
 ## Installation
 
-- PC: run `dist/TransTheFlip-GUI.exe`. Python is not required.
+- PC: run `dist/DuckerTheFlipper-GUI.exe`. Python is not required.
 - Flipper: copy `dist/trans_the_flip.fap` to `apps/GPIO` on the SD card with
-  qFlipper, then open TransTheFlip. Quit the app before copying: its USB keyboard
+  qFlipper, then open DuckerTheFlipper. Quit the app before copying: its USB keyboard
   mode replaces the qFlipper transfer port.
 - The local FAP is built with the official SDK 1.4.3, API 87.1. If the API is
   incompatible with Momentum/Unleashed, rebuild with the SDK for the installed firmware.

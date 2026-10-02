@@ -66,8 +66,8 @@ static void truncate_str(const char* str, char* buf, size_t max_len) {
 
 /** Dessine l'en-tête commun (titre + ligne de séparation). */
 static void draw_header(Canvas* canvas) {
-    canvas_set_font(canvas, FontPrimary);
-    canvas_draw_str_aligned(canvas, SCREEN_W / 2, 7, AlignCenter, AlignCenter, "TransTheFlip");
+    canvas_set_font(canvas, FontSecondary);
+    canvas_draw_str_aligned(canvas, SCREEN_W / 2, 7, AlignCenter, AlignCenter, "DuckerTheFlipper");
     canvas_draw_line(canvas, 0, HEADER_H, SCREEN_W - 1, HEADER_H);
 }
 

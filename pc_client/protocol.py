@@ -92,20 +92,20 @@ def bluetooth_diagnostic(exc, language="en"):
     lower = detail.lower()
     if language == "fr":
         if isinstance(exc, (TimeoutError, asyncio.TimeoutError)):
-            hint = "Délai dépassé : rapprochez le Flipper, ouvrez TransTheFlip et confirmez l’appairage."
+            hint = "Délai dépassé : rapprochez le Flipper, ouvrez DuckerTheFlipper et confirmez l’appairage."
         elif any(word in lower for word in ("pair", "auth", "denied", "access", "0x80070005")):
             hint = "Appairage refusé : confirmez le code sur le Flipper. Si nécessaire, supprimez l’ancien appairage Windows puis recommencez."
         elif any(word in lower for word in ("not found", "not available", "unreachable")):
-            hint = "Appareil ou service introuvable : activez le Bluetooth, ouvrez TransTheFlip sur le Flipper et relancez le scan."
+            hint = "Appareil ou service introuvable : activez le Bluetooth, ouvrez DuckerTheFlipper sur le Flipper et relancez le scan."
         else:
-            hint = "Vérifiez le Bluetooth, ouvrez TransTheFlip et fermez les autres clients Bluetooth avant de réessayer."
+            hint = "Vérifiez le Bluetooth, ouvrez DuckerTheFlipper et fermez les autres clients Bluetooth avant de réessayer."
         return f"{hint}\nDétail : {detail}"
     if isinstance(exc, (TimeoutError, asyncio.TimeoutError)):
-        hint = "Timed out: move the Flipper closer, open TransTheFlip, and confirm pairing."
+        hint = "Timed out: move the Flipper closer, open DuckerTheFlipper, and confirm pairing."
     elif any(word in lower for word in ("pair", "auth", "denied", "access", "0x80070005")):
         hint = "Pairing was refused: confirm the code on the Flipper. If needed, remove the old Windows pairing and try again."
     elif any(word in lower for word in ("not found", "not available", "unreachable")):
-        hint = "Device or service not found: enable Bluetooth, open TransTheFlip on the Flipper, and scan again."
+        hint = "Device or service not found: enable Bluetooth, open DuckerTheFlipper on the Flipper, and scan again."
     else:
-        hint = "Check Bluetooth, open TransTheFlip, and close other Bluetooth clients before trying again."
+        hint = "Check Bluetooth, open DuckerTheFlipper, and close other Bluetooth clients before trying again."
     return f"{hint}\nDetails: {detail}"

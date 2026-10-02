@@ -12,6 +12,7 @@ with patch.object(trans_gui, "BleWorker", return_value=Mock()), patch.object(
 ):
     app = trans_gui.App()
     try:
+        assert "DuckerTheFlipper" in app.title()
         app.after(300, app.quit)
         app.mainloop()
         if sys.platform == "win32":
@@ -84,7 +85,7 @@ with patch.object(trans_gui, "BleWorker", return_value=Mock()), patch.object(
         if "--screenshot" in sys.argv:
             from PIL import ImageGrab
             app.entry.delete("1.0", "end")
-            app.entry.insert("1.0", "Hello from TransTheFlip!\n[DELAY:500][ENTER]")
+            app.entry.insert("1.0", "Hello from DuckerTheFlipper!\n[DELAY:500][ENTER]")
             app._handle_event("disconnected", None)
             app._dev_map.clear()
             app.device_var.set(app._tr("scan_first"))

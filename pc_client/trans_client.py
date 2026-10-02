@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-TransTheFlip — PC Client
+DuckerTheFlipper — PC Client
 Sends text to the Flipper Zero over BLE (Flipper serial service).
 The Flipper receives the text, waits for confirmation, then types it
 as USB HID keystrokes on the target PC.
@@ -160,7 +160,7 @@ async def interactive_loop(client: BleakClient) -> None:
     _status_queue = asyncio.Queue()
     _notifications = NotificationLines()
     print("\n" + "="*55)
-    print("  TransTheFlip Client — Flipper Zero BLE Remote HID")
+    print("  DuckerTheFlipper Client — Flipper Zero BLE Remote HID")
     print("="*55)
     print("  Syntax  : plain text + [TAGS] for special keys")
     print("  Examples: Hello[ENTER]   [WIN+r]notepad[ENTER]")
@@ -258,7 +258,7 @@ async def main() -> None:
             service_uuids = [s.uuid.lower() for s in client.services]
             if FLIPPER_SERVICE_UUID not in service_uuids:
                 print(f"⚠️   Flipper serial service not found ({FLIPPER_SERVICE_UUID})")
-                print("    Is the TransTheFlip app running on the Flipper?")
+                print("    Is the DuckerTheFlipper app running on the Flipper?")
                 return
 
             await interactive_loop(client)

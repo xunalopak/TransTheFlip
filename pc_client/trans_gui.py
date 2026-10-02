@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-TransTheFlip — PC Client (GUI)
+DuckerTheFlipper — PC Client (GUI)
 CustomTkinter front-end for the BLE remote-HID client.
 
 Like the CLI (trans_client.py), it connects to a Flipper Zero over the
@@ -85,7 +85,7 @@ GUI_SCAN_TIMEOUT = 5.0
 
 GUI_TEXT = {
     "en": {
-        "title": "TransTheFlip — BLE Remote HID",
+        "title": "DuckerTheFlipper — BLE Remote HID",
         "disconnected": "● Disconnected", "scanning": "● Scanning...",
         "connecting": "● Connecting...", "disconnecting": "● Disconnecting...",
         "connected": "● Connected: {name}", "scan": "Scan", "connect": "Connect",
@@ -114,12 +114,12 @@ GUI_TEXT = {
         "scan_start": "🔍  Scanning BLE ({seconds:.0f}s)...",
         "service_hint": "    → Check that Bluetooth is on and the Bluetooth service is running.",
         "devices_found": "📡  {count} device(s) found, {flippers} Flipper(s).",
-        "no_device_log": "No device found. Enable Bluetooth, move the Flipper closer, and open TransTheFlip.",
+        "no_device_log": "No device found. Enable Bluetooth, move the Flipper closer, and open DuckerTheFlipper.",
         "connecting_log": "🔗  Connecting to {name}...",
         "pairing": "Confirm the pairing code on the Flipper if prompted (up to 60s).",
         "device_not_found": "Device not found — scan again.",
-        "service_not_found": "Flipper serial service not found — open TransTheFlip, close other Bluetooth clients, then reconnect.",
-        "protocol_timeout": "TransTheFlip did not answer the TTF1 protocol. Install the latest Flipper app and open it.",
+        "service_not_found": "Flipper serial service not found — open DuckerTheFlipper, close other Bluetooth clients, then reconnect.",
+        "protocol_timeout": "DuckerTheFlipper did not answer the TTF1 protocol. Install the latest Flipper app and open it.",
         "disconnected_setup": "Device disconnected during setup.", "disconnect_error": "⚠️  Disconnect error: {error}",
         "disconnected_log": "👋  Disconnected.", "already_waiting": "A transfer is already waiting for the Flipper result.",
         "send_error": "Transfer interrupted. The text is kept.", "receipt_timeout": "No receipt from the Flipper.",
@@ -128,7 +128,7 @@ GUI_TEXT = {
         "link_lost": "🔌  Link lost (device disconnected).", "preserved": "Connection lost or closed. Result unconfirmed; text kept.",
     },
     "fr": {
-        "title": "TransTheFlip — HID distant BLE",
+        "title": "DuckerTheFlipper — HID distant BLE",
         "disconnected": "● Déconnecté", "scanning": "● Recherche...",
         "connecting": "● Connexion...", "disconnecting": "● Déconnexion...",
         "connected": "● Connecté : {name}", "scan": "Rechercher", "connect": "Connecter",
@@ -157,12 +157,12 @@ GUI_TEXT = {
         "scan_start": "🔍  Recherche Bluetooth ({seconds:.0f} s)...",
         "service_hint": "    → Vérifiez que le Bluetooth et le service Bluetooth sont actifs.",
         "devices_found": "📡  {count} appareil(s) trouvé(s), dont {flippers} Flipper(s).",
-        "no_device_log": "Aucun appareil détecté. Activez le Bluetooth, rapprochez le Flipper et ouvrez TransTheFlip.",
+        "no_device_log": "Aucun appareil détecté. Activez le Bluetooth, rapprochez le Flipper et ouvrez DuckerTheFlipper.",
         "connecting_log": "🔗  Connexion à {name}...",
         "pairing": "Confirmez le code d’appairage sur le Flipper si demandé (jusqu’à 60 s).",
         "device_not_found": "Appareil introuvable — relancez la recherche.",
-        "service_not_found": "Service série du Flipper introuvable — ouvrez TransTheFlip, fermez les autres clients Bluetooth, puis reconnectez-vous.",
-        "protocol_timeout": "TransTheFlip ne répond pas au protocole TTF1. Installez et ouvrez la dernière application Flipper.",
+        "service_not_found": "Service série du Flipper introuvable — ouvrez DuckerTheFlipper, fermez les autres clients Bluetooth, puis reconnectez-vous.",
+        "protocol_timeout": "DuckerTheFlipper ne répond pas au protocole TTF1. Installez et ouvrez la dernière application Flipper.",
         "disconnected_setup": "L’appareil s’est déconnecté pendant la configuration.", "disconnect_error": "⚠️  Erreur de déconnexion : {error}",
         "disconnected_log": "👋  Déconnecté.", "already_waiting": "Un transfert attend déjà le résultat du Flipper.",
         "send_error": "Transfert interrompu. Le texte est conservé.", "receipt_timeout": "Aucun accusé de réception du Flipper.",
@@ -364,7 +364,7 @@ class BleWorker:
             service_uuids = [s.uuid.lower() for s in client.services]
             if FLIPPER_SERVICE_UUID not in service_uuids:
                 raise RuntimeError(
-                    "Flipper serial service not found — open TransTheFlip, "
+                    "Flipper serial service not found — open DuckerTheFlipper, "
                     "close other Bluetooth clients, then reconnect."
                 )
 
@@ -377,7 +377,7 @@ class BleWorker:
             try:
                 await asyncio.wait_for(self._ready.wait(), 5.0)
             except asyncio.TimeoutError:
-                raise RuntimeError("TransTheFlip did not answer the TTF1 protocol. Install the latest Flipper app and open it.") from None
+                raise RuntimeError("DuckerTheFlipper did not answer the TTF1 protocol. Install the latest Flipper app and open it.") from None
             if self._receive_error:
                 raise RuntimeError(self._receive_error)
             if self._client is not client or not client.is_connected:
@@ -603,7 +603,7 @@ class App(ctk.CTk):
         # Calling CTk's setter prevents its delayed default icon from replacing ours.
         if sys.platform == "win32":
             self.iconbitmap(str(assets / "app.ico"))
-        ctk.CTkLabel(header, text="TransTheFlip", text_color=accent,
+        ctk.CTkLabel(header, text="DuckerTheFlipper", text_color=accent,
                      font=ctk.CTkFont(size=26, weight="bold"), anchor="w").grid(row=0, column=1, sticky="w")
         self.subtitle_label = ctk.CTkLabel(header, text=self._tr("subtitle"), text_color="#A5AFBE", anchor="w")
         self.subtitle_label.grid(row=1, column=1, sticky="w")
@@ -757,7 +757,7 @@ class App(ctk.CTk):
             return App._tr(self, "device_not_found")
         if text.startswith("Flipper serial service not found"):
             return App._tr(self, "service_not_found")
-        if text.startswith("TransTheFlip did not answer"):
+        if text.startswith("DuckerTheFlipper did not answer"):
             return App._tr(self, "protocol_timeout")
         if text == "Device disconnected during setup.":
             return App._tr(self, "disconnected_setup")

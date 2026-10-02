@@ -15,7 +15,7 @@ jobs:
   # Job 1 : compilation du FAP Flipper (Linux + ufbt)
   # ════════════════════════════════════════════════════════════════════════
   build-fap:
-    name: Build TransTheFlip.fap
+    name: Build DuckerTheFlipper.fap
     runs-on: ubuntu-latest
 
     steps:
@@ -62,14 +62,14 @@ jobs:
         run: |
           FAP=$(find ~/.ufbt/build -name "trans_the_flip.fap" | head -1)
           echo "FAP source: $FAP"
-          cp "$FAP" "TransTheFlip-${{ github.ref_name }}.fap"
+          cp "$FAP" "DuckerTheFlipper-${{ github.ref_name }}.fap"
 
       # ── 8. Publier le FAP comme artefact pour le job de release ───────────
       - name: Upload FAP artifact
         uses: actions/upload-artifact@v4
         with:
           name: fap
-          path: TransTheFlip-${{ github.ref_name }}.fap
+          path: DuckerTheFlipper-${{ github.ref_name }}.fap
 
   # ════════════════════════════════════════════════════════════════════════
   # Job 2 : compilation des clients PC en exécutables Windows (PyInstaller)
@@ -96,13 +96,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
 
-      # ── 4. GUI : TransTheFlip-GUI.exe (fenêtré, embarque customtkinter) ──
+      # ── 4. GUI : DuckerTheFlipper-GUI.exe (fenêtré, embarque customtkinter) ──
       - name: Test PC client
         run: |
           python -m unittest discover -s pc_client
           python tests/check_gui.py
 
-      # ── 5. CLI : TransTheFlip-CLI.exe (console) ──────────────────────────
+      # ── 5. CLI : DuckerTheFlipper-CLI.exe (console) ──────────────────────────
       - name: Build Windows executables
         run: ./pc_client/build_windows.ps1
 
@@ -133,13 +133,18 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: TransTheFlip ${{ github.ref_name }} — Desktop refresh & keyboard layouts
+          name: DuckerTheFlipper ${{ github.ref_name }} — Desktop refresh & keyboard layouts
           files: |
-            artifacts/TransTheFlip-${{ github.ref_name }}.fap
-            artifacts/TransTheFlip-GUI.exe
-            artifacts/TransTheFlip-CLI.exe
+            artifacts/DuckerTheFlipper-${{ github.ref_name }}.fap
+            artifacts/DuckerTheFlipper-GUI.exe
+            artifacts/DuckerTheFlipper-CLI.exe
           generate_release_notes: true
           body: |
+            ## DuckerTheFlipper
+
+            Previously named TransTheFlip. The TTF1 protocol, internal FAP identifier
+            and saved settings remain unchanged for compatibility.
+
             ## What's new in v2.3.0
 
             - Refreshed desktop GUI: dark theme, orange accents, clearer sections,
@@ -166,8 +171,8 @@ jobs:
             ## Installation
 
             Update both the PC client and Flipper FAP for remote keyboard selection.
-            Run TransTheFlip-GUI.exe or TransTheFlip-CLI.exe on Windows (Python is not required).
-            Install the FAP on your Flipper, open TransTheFlip and connect from the PC.
+            Run DuckerTheFlipper-GUI.exe or DuckerTheFlipper-CLI.exe on Windows (Python is not required).
+            Install the FAP on your Flipper, open DuckerTheFlipper and connect from the PC.
             External .kl layouts must exist in /ext/badusb/assets/layouts and match the target OS.
 
             ## Verification

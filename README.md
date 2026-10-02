@@ -1,4 +1,7 @@
-# TransTheFlip — BLE Remote Bad USB
+# DuckerTheFlipper — BLE Remote Bad USB
+
+Previously named **TransTheFlip**. The TTF1 protocol, internal FAP identifier
+(`trans_the_flip`) and saved settings remain unchanged for compatibility.
 
 > Update the PC client and Flipper application together: transfers now require the
 > TTF1 length/CRC protocol. See the [upgrade instructions and features](UPGRADE.md).
@@ -9,16 +12,16 @@ The PC client supports both a command-line mode and a Windows GUI.
 
 ```
 [Master PC] ──BLE NUS──▶ [Flipper Zero] ──USB HID──▶ [Target PC]
- trans_client.py            TransTheFlip.fap           (keyboard)
+ trans_client.py            DuckerTheFlipper.fap           (keyboard)
 ```
 
 ## How it works
 
 1. Plug the Flipper via **USB** into the **target PC**
-2. Launch the TransTheFlip app on the Flipper
+2. Launch the DuckerTheFlipper app on the Flipper
 3. **Pair** the Flipper with the **master PC** (Windows) — see below.
    Required: BLE characteristics are protected by authentication.
-4. Start `TransTheFlip-GUI.exe` or `trans_client.py` on the **master PC**
+4. Start `DuckerTheFlipper-GUI.exe` or `trans_client.py` on the **master PC**
 5. Type your text in the client — it appears on the Flipper screen
 6. Press **OK** (center button), or click **Execute on Flipper** in the GUI
    → the Flipper types the text on the target PC
@@ -94,7 +97,7 @@ or the common `fr-FR.kl`, `de-DE.kl`, and `en-US.kl` files on the Flipper SD car
 pip install ufbt
 
 # 2. From the project directory
-cd TransTheFlip
+cd ducker-the-flipper
 ufbt update --channel=release   # download the Unleashed SDK
 
 # 3. Compile
@@ -122,7 +125,7 @@ python trans_client.py
 🔐  Pairing established (encrypted link).
 
 =======================================================
-  TransTheFlip Client — Flipper Zero BLE Remote HID
+  DuckerTheFlipper Client — Flipper Zero BLE Remote HID
 =======================================================
   Syntax   : plain text + [TAGS] for special keys
   Examples : Hello[ENTER]   [WIN+r]notepad[ENTER]
@@ -150,7 +153,7 @@ buttons accessible. Session history is kept in memory only.
 ## Project structure
 
 ```
-TransTheFlip/
+ducker-the-flipper/
 ├── application.fam          FAP manifest
 ├── trans_the_flip.c         Entry point, state machine, main loop
 ├── trans_the_flip.h         Structs, enums, constants
